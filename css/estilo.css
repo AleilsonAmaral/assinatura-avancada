@@ -1,0 +1,239 @@
+/* ========================================================= */
+/* RESET BÁSICO E CONFIGURAÇÕES GLOBAIS                      */
+/* ========================================================= */
+:root {
+    --primary-color: #007BFF;
+    --primary-hover: #0056b3;
+    --secondary-color: #6c757d;
+    --secondary-hover: #5a6268;
+    --success-color: #28a745;
+    --error-color: #dc3545;
+    --light-bg: #f8f9fa;
+    --text-color: #343a40;
+    --border-color: #dee2e6;
+    --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    background-color: var(--light-bg);
+    color: var(--text-color);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    min-height: 100vh;
+}
+
+/* ========================================================= */
+/* CONTAINERS PRINCIPAIS                                     */
+/* ========================================================= */
+.auth-container,
+.container {
+    background: #fff;
+    padding: 30px 40px;
+    border-radius: 12px;
+    box-shadow: var(--box-shadow);
+    width: 100%;
+    max-width: 700px;
+    margin-bottom: 30px;
+    border: 1px solid var(--border-color);
+}
+
+h1, h2, h3 {
+    color: var(--text-color);
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+h1 {
+    font-size: 2em;
+    text-align: center;
+    border-bottom: 2px solid var(--primary-color);
+    padding-bottom: 15px;
+}
+
+h2 {
+    font-size: 1.5em;
+    color: var(--primary-color);
+    border-left: 4px solid var(--primary-color);
+    padding-left: 10px;
+}
+
+/* ========================================================= */
+/* FORMULÁRIOS (INPUTS, LABELS, BOTÕES)                      */
+/* ========================================================= */
+label {
+    display: block;
+    margin-top: 20px;
+    font-weight: 500;
+    color: var(--secondary-color);
+}
+
+input[type="text"],
+input[type="email"],
+input[type="tel"],
+input[type="password"],
+textarea,
+select {
+    width: 100%;
+    padding: 12px;
+    margin-top: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="tel"]:focus,
+input[type="password"]:focus,
+textarea:focus,
+select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+}
+
+button {
+    background: var(--primary-color);
+    color: white;
+    padding: 12px 25px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-top: 25px;
+    font-size: 17px;
+    font-weight: 600;
+    width: 100%;
+    transition: background-color 0.3s, transform 0.2s;
+}
+
+button:hover {
+    background: var(--primary-hover);
+    transform: translateY(-2px);
+}
+
+.secondary-button {
+    background: var(--secondary-color);
+}
+
+.secondary-button:hover {
+    background: var(--secondary-hover);
+}
+
+/* ========================================================= */
+/* ELEMENTOS DE INTERFACE (MENSAGENS, LOGS, ETC)             */
+/* ========================================================= */
+.message-box {
+    padding: 15px;
+    margin-top: 20px;
+    border-radius: 8px;
+    text-align: center;
+    font-weight: 500;
+}
+
+.success {
+    background-color: #e9f7ef;
+    color: var(--success-color);
+    border: 1px solid var(--success-color);
+}
+
+.error {
+    background-color: #fbe9e7;
+    color: var(--error-color);
+    border: 1px solid var(--error-color);
+}
+
+.hidden {
+    display: none;
+}
+
+.helper-text, .auth-toggle {
+    font-size: 0.9em;
+    color: var(--secondary-color);
+    margin-top: 8px;
+    text-align: center;
+}
+
+.auth-toggle a {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.auth-toggle a:hover {
+    text-decoration: underline;
+}
+
+#log {
+    margin-top: 30px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 15px;
+    font-size: 0.85em;
+    color: #7f8c8d;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+/* ========================================================= */
+/* COMPONENTES ESPECÍFICOS (RUBRICA)                         */
+/* ========================================================= */
+.signature-pad-container {
+    margin-top: 10px;
+    text-align: center;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 5px;
+    display: inline-block; /* Faz o container se ajustar ao canvas */
+}
+
+#signatureCanvas {
+    background-color: #fff;
+    border-radius: 4px;
+}
+
+/* NOVO: Wrapper para posicionar o botão de toggle de senha */
+.password-input-wrapper {
+    position: relative; /* FUNDAMENTAL: Define o ponto de origem (0,0) para o botão absoluto */
+    margin-top: 8px; /* Mantém o espaçamento após o label */
+}
+
+/* Garante que o input preencha o wrapper */
+.password-input-wrapper input {
+    width: 100%;
+    /* Adiciona padding suficiente para que o texto não fique debaixo do botão */
+    padding-right: 40px; 
+}
+
+.toggle-password-btn {
+    position: absolute; /* FUNDAMENTAL: Retira o botão do fluxo e o faz flutuar */
+    right: 10px; /* Distância da borda direita do input */
+    top: 50%;
+    transform: translateY(-50%); /* Centraliza verticalmente o botão */
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.2em;
+    padding: 0;
+    margin: 0;
+    width: auto; /* Desfaz o width: 100% dos botões normais */
+    height: auto;
+    z-index: 10; /* Garante que o botão fique acima do input */
+    color: var(--secondary-color);
+    transition: color 0.2s;
+}
+
+.toggle-password-btn:hover {
+    color: var(--primary-color);
+    transform: translateY(-50%) scale(1.1);
+    background: none;
+}

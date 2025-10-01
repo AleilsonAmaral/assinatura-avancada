@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API de Assinatura Digital Avançada</title>
+    <link rel="stylesheet" href="css/estilo.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+</head>
+
+<body>
+
+    <div class="auth-container">
+        <div id="loginSection" class="step-container">
+            <h2>Login de Usuário</h2>
+
+            <label for="loginEmail">E-mail:</label>
+            <input type="email" id="loginEmail" placeholder="seu@email.com" required>
+
+            <label for="loginPassword">Senha:</label>
+            <div class="password-input-wrapper">
+                <input type="password" id="loginPassword" placeholder="Insira sua senha" required>
+                <button type="button" class="toggle-password-btn material-icons" data-target="loginPassword">
+                    visibility_off
+                </button>
+            </div>
+
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="stayLoggedInCheckbox">
+                <label for="stayLoggedInCheckbox" style="display: inline; margin-top: 0; font-weight: normal;">
+                    Manter-me logado (30 dias)
+                </label>
+            </div>
+
+            <button onclick="loginUser()">Entrar</button>
+            <p id="loginStatus" class="message-box success" style="display:none;"></p>
+
+            <p class="auth-toggle">Não tem uma conta? <a href="#" id="goToRegister">Crie uma agora</a>.</p>
+        </div>
+        <div id="registerSection" class="step-container hidden">
+            <h2>Criar Nova Conta</h2>
+
+            <label for="registerName">Nome:</label>
+            <input type="text" id="registerName" placeholder="Seu nome completo" required>
+
+            <label for="registerEmail">E-mail:</label>
+            <input type="email" id="registerEmail" placeholder="seu@email.com" required>
+
+            <label for="registerPassword">Senha:</label>
+            <div class="password-input-wrapper">
+                <input type="password" id="registerPassword" placeholder="Crie uma senha forte" required>
+                <button type="button" class="toggle-password-btn material-icons" data-target="loginPassword">
+                    visibility_off
+                </button>
+            </div>
+
+            <button onclick="registerUser()">Registrar</button>
+            <p id="registerStatus" class="message-box success" style="display:none;"></p>
+
+            <p class="auth-toggle">Já tem uma conta? <a href="#" id="goToLogin">Faça o login</a>.</p>
+        </div>
+
+        <div id="userProfileSection" class="step-container hidden">
+            <h3>Olá, <span id="userNameDisplay">Usuário</span>!</h3>
+            <p id="userInfo">Informações carregadas com sucesso.</p>
+            <button onclick="logoutUser()" class="secondary-button">Sair (Logout)</button>
+            <button onclick="getProfile()">Carregar Perfil (Rota Protegida)</button>
+            <p id="profileStatus" class="message-box success" style="display:none;"></p>
+        </div>
+
+    </div>
+
+    <div id="signatureContainer" class="container hidden">
+        <h1>API de Assinatura Digital Avançada (Fluxo OTP)</h1>
+        <p>Simulação do fluxo de Assinatura Eletrônica Avançada (Upload, Rubrica, OTP).</p>
+
+        <div id="step1" class="step-container">
+            <h2>Passo 1: Autenticação OTP</h2>
+            <p>Gere e receba o código de uso único (OTP) no seu e-mail ou celular.</p>
+
+            <label for="signerId">CPF do Signatário:</label>
+            <input type="text" id="signerId" placeholder="000.000.000-00" required>
+
+            <label for="method">Método de Envio do Token:</label>
+            <select id="method">
+                <option value="Email">Email</option>
+                <option value="SMS">SMS</option>
+                <option value="WhatsApp">WhatsApp</option>
+            </select>
+
+            <div id="recipient-inputs">
+                <div id="emailInputContainer">
+                    <label for="signerEmail">Enviar para o E-mail:</label>
+                    <input type="email" id="signerEmail" placeholder="exemplo@email.com" required>
+                </div>
+
+                <div id="phoneInputContainer" class="hidden">
+                    <label for="signerPhone">Enviar para o Celular:</label>
+                    <input type="tel" id="signerPhone" placeholder="+5519999999999" required>
+                    <p class="helper-text">Insira o número completo com código do país e DDD.</p>
+                </div>
+            </div>
+
+            <button onclick="solicitarOTP()">1. Solicitar OTP</button>
+            <p id="otpStatus" class="message-box success" style="display:none;"></p>
+        </div>
+
+        <div id="step2" class="step-container hidden">
+            <h2>Passo 2: Arquivo, Rubrica e Assinatura</h2>
+
+            <label for="otpCode">Código OTP Recebido:</label>
+            <input type="text" id="otpCode" placeholder="Insira o código de 6 dígitos" required>
+
+            <h2>Passo 2: Arquivo, Rubrica e Assinatura</h2>
+
+            <label for="templateSelector">Ou Selecione um Contrato Padrão:</label>
+            <select id="templateSelector" onchange="handleTemplateSelection()">
+                <option value="">-- Selecione um Modelo --</option>
+                <option value="template-servico">Contrato de Prestação de Serviço (Padrão)</option>
+                <option value="template-nda">Acordo de Não Divulgação (NDA)</option>
+                <option value="upload">Fazer Upload de Novo Arquivo</option>
+            </select>
+            <div id="fileUploadContainer"> <label for="documentFile">Selecione o Documento (PDF/DOCX/etc):</label>
+                <input type="file" id="documentFile">
+            </div>
+
+            <label for="signatureCanvas">Sua Rubrica (Assinatura Manuscrita):</label>
+            <div class="signature-pad-container">
+                <canvas id="signatureCanvas" width="400" height="150"></canvas>
+            </div>
+            <button type="button" onclick="limparCanvas()" class="secondary-button">Limpar Rubrica</button>
+
+            <label for="docTitle">Título do Contrato:</label>
+            <input type="text" id="docTitle" value="Contrato de Aluguel 2025" required>
+
+            <label for="docId">ID Único do Documento:</label>
+            <input type="text" id="docId" value="DOC-ALUGUEL-001" required>
+
+            <button onclick="assinarDocumento()">2. Assinar Digitalmente</button>
+            <div id="signatureResult" class="message-box success" style="display:none;"></div>
+        </div>
+
+        <div id="log"></div>
+    </div>
+
+    <div id="evidenceContainer" class="container hidden">
+        <h1>Verificar Evidência Legal (Status do Contrato)</h1>
+        <p>Consulte o status legal de qualquer documento assinado usando o ID Único (Doc ID) ou o Hash Criptográfico.
+        </p>
+
+        <div class="step-container">
+            <h2>Busca de Evidência</h2>
+            <label for="evidenceSearchTerm">ID do Documento ou Hash:</label>
+            <input type="text" id="evidenceSearchTerm" placeholder="Ex: TPL-SERV-1785590400000 ou hash criptográfico">
+            <button onclick="buscarEvidencia()">Buscar Evidência</button>
+            <p id="evidenceStatus" class="message-box" style="display:none;"></p>
+        </div>
+
+        <div id="evidenceResultDisplay" class="step-container hidden">
+            <h2>Detalhes da Evidência Legal</h2>
+            <div id="evidenceData">
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+
+</body>
+
+</html>

@@ -1,0 +1,15 @@
+# ARQUIVOS DE DEPENDÊNCIAS E INSTALAÇÃO
+/node_modules
+/package-lock.json
+/npm-debug.log
+
+# ARQUIVOS DE SEGURANÇA E AMBIENTE
+.env
+/uploads/
+
+# PASTAS DE PROJETOS ANINHADOS E CACHE DO EXPO/VS CODE
+# (Isso evita o erro de repositórios aninhados que tivemos)
+/AppDeAssinatura/
+/MeuAppDeAssinatura/
+.expo/
+.vscode/

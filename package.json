@@ -1,0 +1,29 @@
+{
+  "name": "digital-signer-api",
+  "version": "1.0.0",
+  "description": "API de Assinatura Digital Avançada (Upload, Hash, OTP)",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "assinatura",
+    "digital",
+    "nodejs",
+    "express"
+  ],
+  "author": "ALeilson",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "fs": "0.0.1-security",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.0.0",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.9.13"
+  }
+}
