@@ -12,13 +12,18 @@ const activeTokens = new Map();
 
 // 1. Cliente Nodemailer para E-mail
 const emailTransporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
-    secure: true,
+    host: 'smtp-relay.brevo.com',
+    port: 587,
+    secure: false,
     auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_API_KEY, 
     },
+
+    tls: {
+    // Esta linha pode ser necessária para conexões mais antigas, mas tente sem ela primeiro
+    // ciphers: 'SSLv3' 
+}
 });
 
 // --- FUNÇÕES DE GERAÇÃO E VALIDAÇÃO DE TOKEN ---
@@ -104,16 +109,16 @@ async function sendToken(method, recipient, token) {
             case 'Email':
                 await sendEmailOTP(recipient, token);
                 return `Token enviado para o e-mail ${recipient}`;
-            
+
             case 'SMS':
-                await sendSmsOTP(recipient, token); 
+                await sendSmsOTP(recipient, token);
                 return `Token enviado por SMS para ${recipient}`;
 
             case 'WhatsApp':
                 // Mantemos o WhatsApp como simulação, pois não foi configurado na Zenvia
                 console.log(`[SIMULAÇÃO WHATSAPP] Para o número ${recipient}, o token é ${token}`);
                 return `Token para ${recipient} (via WhatsApp) foi gerado no console.`;
-                
+
             default:
                 throw new Error(`Método de envio '${method}' não suportado.`);
         }
