@@ -1,15 +1,13 @@
-// src/routes/authRoutes.js
-
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-const authMiddleware = require('../middleware/authMiddleware'); // <-- 1. IMPORTAÇÃO DO MIDDLEWARE
+const User = require('../models/User'); 
+const authMiddleware = require('../middleware/authMiddleware'); 
 
-// =========================================================
-// ROTA: POST /api/v1/auth/register (Sem Alterações)
-// =========================================================
+
+// ROTA: POST /api/v1/auth/register
+
 router.post('/register', async (req, res) => {
     const { name, email, password } = req.body;
 
@@ -23,7 +21,8 @@ router.post('/register', async (req, res) => {
             return res.status(409).json({ message: 'Este e-mail já está cadastrado.' });
         }
 
-        const newUser = new User({ name, email, password });
+        // A senha será hasheada automaticamente pelo middleware do Mongoose em User.js
+        const newUser = new User({ name, email, password }); 
         const savedUser = await newUser.save();
 
         res.status(201).json({
@@ -41,27 +40,43 @@ router.post('/register', async (req, res) => {
     }
 });
 
-/// src/routes/authRoutes.js
+
+// ROTA: POST /api/v1/auth/login (CRÍTICO - COM VALIDAÇÃO DE SENHA)
 
 router.post('/login', async (req, res) => {
-    // 1. Desestruturar o novo parâmetro 'stayLoggedIn'
+    // 1. Desestruturar os dados essenciais
     const { email, password, stayLoggedIn } = req.body;
 
+    if (!email || !password) {
+        return res.status(400).json({ message: 'Por favor, forneça e-mail e senha.' });
+    }
+
     try {
-        // ... (Verificação de usuário e senha) ...
+        // Busca o usuário, incluindo o campo 'password' que é 'select: false' por padrão
+        const user = await User.findOne({ email }).select('+password'); 
 
-        const payload = { userId: user.id };
+        if (!user) {
+            return res.status(401).json({ message: 'Credenciais inválidas.' });
+        }
 
-        // 2. DEFINIÇÃO DA EXPIRAÇÃO BASEADA NA OPÇÃO DO USUÁRIO
-        let expiresInTime = '1h'; // Padrão: Se não marcou, expira em 1 hora
+        // CRÍTICO: Compara a senha enviada com o hash salvo no DB
+        const isMatch = await bcrypt.compare(password, user.password); 
+
+        if (!isMatch) {
+            return res.status(401).json({ message: 'Credenciais inválidas.' });
+        }
+        
+        // 2. DEFINIÇÃO DA EXPIRAÇÃO (JWT)
+        const payload = { id: user._id, name: user.name };
+        let expiresInTime = '1h'; 
         if (stayLoggedIn) {
-            expiresInTime = '30d'; // Se marcou, expira em 30 dias (ou o tempo que você preferir)
+            expiresInTime = '30d'; 
         }
 
         const token = jwt.sign(
             payload,
             process.env.JWT_SECRET,
-            { expiresIn: expiresInTime } // 3. Usar a variável definida
+            { expiresIn: expiresInTime } 
         );
 
         res.status(200).json({
@@ -70,22 +85,19 @@ router.post('/login', async (req, res) => {
         });
 
     } catch (error) {
-        // ... (Tratamento de erros) ...
+        console.error('[ERRO NO LOGIN]:', error);
+        res.status(500).json({ message: 'Erro interno ao tentar fazer login.' });
     }
 });
 
-// =========================================================
-// ROTA: GET /api/v1/auth/profile (A NOVA ROTA PROTEGIDA!)
-// DESCRIÇÃO: Retorna os dados do usuário logado (requer token)
-// =========================================================
-router.get('/profile', authMiddleware, (req, res) => {
-    // 2. O middleware 'authMiddleware' é executado primeiro.
-    // Se o token for válido, a função continua e o 'req.user' estará disponível.
-    // Se o token for inválido, o middleware já terá retornado um erro 401.
 
+// ROTA: GET /api/v1/auth/profile (ROTA PROTEGIDA)
+
+router.get('/profile', authMiddleware, (req, res) => {
+    // O 'req.user' está disponível porque o authMiddleware verificou o JWT
     res.status(200).json({
         message: "Dados do perfil carregados com sucesso.",
-        user: req.user // 'req.user' foi adicionado à requisição pelo nosso middleware!
+        user: req.user
     });
 });
 
