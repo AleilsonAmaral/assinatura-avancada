@@ -5,10 +5,10 @@ const sgMail = require('@sendgrid/mail'); // SDK do SendGrid
 dotenv.config();
 
 // CONFIGURAÇÕES
-const OTP_EXPIRATION_MS = 10 * 60 * 1000; // Validade de 10 minutos
+const OTP_EXPIRATION_MS = 10 * 60 * 1000; // 10 minutos
 const activeTokens = new Map();
 const SENDER_EMAIL = process.env.SENDER_EMAIL; 
-const JWT_SECRET = process.env.JWT_SECRET; // Usado para outras partes do sistema
+const JWT_SECRET = process.env.JWT_SECRET; 
 
 // --- 1. INICIALIZAÇÃO SENDGRID ---
 // A chave é inicializada globalmente com a variável de ambiente
@@ -68,7 +68,7 @@ async function sendToken(method, recipient, token) {
 
             case 'SMS':
             case 'WhatsApp':
-                // Voltamos para a simulação, já que removemos as dependências externas.
+                // Voltamos para a simulação de log
                 console.log(`[LOG - SIMULAÇÃO] ✉️ TOKEN (Simulado) ${token} foi gerado para ${recipient} via ${method}.`);
                 return `Token para ${recipient} (via ${method}) foi gerado no console.`;
 
@@ -89,3 +89,5 @@ module.exports = {
     validateToken,
     sendToken,
 };
+
+    
