@@ -1,16 +1,11 @@
-// src/script.js - CONSOLIDADO E CORRIGIDO (FINAL)
-
-// =================================================================
-// VARIÁVEIS GLOBAIS E CONSTANTES
-// =================================================================
-const API_BASE_URL = 'http://localhost:3000/api/v1'; 
+const API_BASE_URL = 'https://assinatura-avancada.onrender.com/api/v1'; 
 const SIGNER_NAME = "Usuário de Teste"; 
 let globalSignerId = ''; 
 let canvas, ctx;       
 
-// =================================================================
+
 // FUNÇÕES UTILITÁRIAS (LOGS E MENSAGENS)
-// =================================================================
+
 function log(message, type = 'info') {
     const logDiv = document.getElementById('log');
     const color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'blue';
@@ -24,9 +19,9 @@ function displayStatus(elementId, message, type) {
     element.style.display = 'block';
 }
 
-// =================================================================
+
 // FUNÇÕES DE GERENCIAMENTO DE ESTADO DA UI
-// =================================================================
+
 function toggleAuthForms(showLogin) {
     const loginSection = document.getElementById('loginSection');
     const registerSection = document.getElementById('registerSection');
@@ -47,7 +42,7 @@ function updateUIBasedOnLoginState() {
     const loginSection = document.getElementById('loginSection');
     const registerSection = document.getElementById('registerSection');
     const userNameDisplay = document.getElementById('userNameDisplay');
-    const evidenceContainer = document.getElementById('evidenceContainer'); // NOVO
+    const evidenceContainer = document.getElementById('evidenceContainer'); 
 
     if (token) {
         // ESTADO LOGADO
@@ -72,9 +67,8 @@ function updateUIBasedOnLoginState() {
     }
 }
 
-// =================================================================
+
 // FUNÇÕES DE AUTENTICAÇÃO
-// =================================================================
 
 async function registerUser() {
     const name = document.getElementById('registerName').value;
@@ -201,9 +195,9 @@ async function getProfile() {
     }
 }
 
-// =================================================================
+
 // FUNÇÕES DE CONFIGURAÇÃO DA UI
-// =================================================================
+
 function setupPasswordToggles() {
     document.querySelectorAll('.toggle-password-btn').forEach(button => {
         button.addEventListener('click', () => {
@@ -237,9 +231,8 @@ function setupAuthEventListeners() {
     }
 }
 
-// =================================================================
 // LÓGICA DE GERENCIAMENTO DE TEMPLATES (FRONTEND)
-// =================================================================
+
 function handleTemplateSelection() {
     const selector = document.getElementById('templateSelector');
     const fileUploadContainer = document.getElementById('fileUploadContainer');
@@ -276,9 +269,9 @@ function handleTemplateSelection() {
 }
 
 
-// =================================================================
+
 // LÓGICA DO CANVAS (RUBRICA)
-// =================================================================
+
 function iniciarPadDeAssinatura() {
     let isDrawing = false;
     ctx.lineWidth = 3;
@@ -332,9 +325,9 @@ function limparCanvas() {
     }
 }
 
-// =================================================================
+
 // ETAPA 1: SOLICITAR OTP (POST /otp/generate)
-// =================================================================
+
 async function solicitarOTP() {
     // 1. Captura os dados da tela
     const signerId = document.getElementById('signerId').value;
@@ -397,9 +390,9 @@ async function solicitarOTP() {
     }
 }
 
-// =================================================================
+
 // ETAPA 2: ASSINAR DOCUMENTO (POST /document/sign)
-// =================================================================
+
 
 async function assinarDocumento() {
     const otpCode = document.getElementById('otpCode').value;
@@ -492,9 +485,9 @@ async function assinarDocumento() {
     }
 }
 
-// =================================================================
+
 // FUNÇÃO: BUSCAR E EXIBIR EVIDÊNCIA LEGAL
-// =================================================================
+
 async function buscarEvidencia() {
     const searchTerm = document.getElementById('evidenceSearchTerm').value;
     const statusDiv = 'evidenceStatus';
@@ -517,7 +510,7 @@ async function buscarEvidencia() {
         // Chama a Rota 3: /document/:searchTerm/evidence
         const response = await fetch(`${API_BASE_URL}/document/${searchTerm}/evidence`, {
             method: 'GET',
-            headers: { 'Content-Type': 'application/json' } // CORRIGIDO: SEM AUTORIZAÇÃO AQUI
+            headers: { 'Content-Type': 'application/json' } 
         });
 
         const data = await response.json();
@@ -578,9 +571,9 @@ function renderEvidence(record, targetDiv) {
             : '<p>Nenhuma rubrica visual anexada.</p>'}
     `;
 }
-// =================================================================
+
 // INICIALIZAÇÃO DA PÁGINA (SETUP)
-// =================================================================
+
 document.addEventListener('DOMContentLoaded', () => {
     // 1. GERENCIAMENTO DE ESTADO: Verifica e atualiza a UI com base no token
     updateUIBasedOnLoginState();

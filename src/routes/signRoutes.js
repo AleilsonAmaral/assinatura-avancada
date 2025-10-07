@@ -13,9 +13,9 @@ const dbService = require('../services/dbService');
 // Configuração do Multer: armazena os arquivos temporariamente na pasta 'uploads'
 const upload = multer({ dest: 'uploads/' }); 
 
-// ===================================================================
+
 // ROTA 1: GERAR E ENVIAR O TOKEN OTP (PROTEGIDA POR JWT)
-// ===================================================================
+
 router.post('/otp/generate', authMiddleware, async (req, res) => {
     const { signerId, method, recipient } = req.body;
 
@@ -38,9 +38,9 @@ router.post('/otp/generate', authMiddleware, async (req, res) => {
 });
 
 
-// ===================================================================
+
 // ROTA 2: Assinatura com Upload ou Template Fixo (COMPLETO)
-// ===================================================================
+
 router.post('/document/sign', authMiddleware, upload.single('documentFile'), async (req, res) => {
     
     const { signerId, signerName, contractTitle, documentId, submittedOTP, signatureImage, templateId } = req.body;
@@ -141,9 +141,8 @@ router.post('/document/sign', authMiddleware, upload.single('documentFile'), asy
     }
 });
 
-// ===================================================================
+
 // ROTA 3: Buscar Evidência (AGORA É ASYNC/AWAIT)
-// ===================================================================
 
 router.get('/document/:searchTerm/evidence', async (req, res) => { 
     const { searchTerm } = req.params;
