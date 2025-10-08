@@ -1,5 +1,3 @@
-// App.js - GERENCIADOR DE ROTAS CENTRAL 
-
 import * as React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -8,6 +6,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LoginScreen from './LoginScreen';
 import SignatureScreen from './SignatureScreen';
 import VerificationScreen from './VerificationScreen';
+import EvidenceScreen from './EvidenceScreen'; // <--- NOVO: Importa a Tela de Auditoria
 
 const Stack = createNativeStackNavigator();
 
@@ -35,6 +34,13 @@ export default function App() {
           name="Verification"
           component={VerificationScreen}
           options={{ title: 'Passo 2: Finalizar Assinatura' }}
+        />
+
+        {/* ROTA 4: BUSCA DE EVIDÊNCIAS (Auditoria) */}
+        <Stack.Screen
+          name="Evidence"
+          component={EvidenceScreen}
+          options={{ title: 'Auditoria de Assinaturas' }}
         />
 
       </Stack.Navigator>

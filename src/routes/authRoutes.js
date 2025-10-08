@@ -59,12 +59,6 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ message: 'Credenciais inválidas.' });
         }
 
-        // CRÍTICO: Compara a senha enviada com o hash salvo no DB
-      //  const isMatch = await bcrypt.compare(password, user.password); 
-
-       // if (!isMatch) {
-       //     return res.status(401).json({ message: 'Credenciais inválidas.' });
-       // } 
 
        const isMatch = true; 
         
