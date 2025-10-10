@@ -6,7 +6,9 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LoginScreen from './LoginScreen';
 import SignatureScreen from './SignatureScreen';
 import VerificationScreen from './VerificationScreen';
-import EvidenceScreen from './EvidenceScreen'; // <--- NOVO: Importa a Tela de Auditoria
+import EvidenceScreen from './EvidenceScreen';
+// ⭐️ IMPORTAÇÃO NOVA
+import RubricaScreen from './RubricaScreen'; 
 
 const Stack = createNativeStackNavigator();
 
@@ -27,6 +29,14 @@ export default function App() {
           name="Signature"
           component={SignatureScreen}
           options={{ title: 'Passo 1: Gerar OTP' }}
+        />
+
+        {/* ⭐️ ROTA 2.5: CAPTURA DA RUBRICA (Passo 1.5) 
+        Este é o elo que faltava na navegação. */}
+        <Stack.Screen
+          name="RubricaScreen"
+          component={RubricaScreen}
+          options={{ title: 'Passo 1.5: Captura da Rubrica' }}
         />
 
         {/* ROTA 3: VERIFICAÇÃO E ASSINATURA (Passo 2) */}

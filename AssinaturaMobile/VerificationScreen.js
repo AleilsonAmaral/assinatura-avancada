@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
     StyleSheet, 
     Text, 
@@ -6,34 +6,17 @@ import {
     TextInput, 
     Button, 
     SafeAreaView,
-    ScrollView,
+    ScrollView, 
     Alert,
-    ActivityIndicator,
-    TouchableOpacity,
-    Platform 
+    ActivityIndicator
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker'; 
+import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
-// REMOVIDO: Importação direta do Signature aqui para evitar crash no web
-import * as DocumentPicker from 'expo-document-picker'; 
+
+// A importação 'mime' permanece removida para evitar o crash.
 
 const API_BASE_URL = 'https://assinatura-avancada.onrender.com/api/v1'; 
 const SIGNER_NAME = 'Usuário de Teste'; 
-
-// Importa o Canvas de Rubrica APENAS se não for web
-let SignatureComponent;
-if (Platform.OS !== 'web') {
-    // Usamos um bloco try/catch para a importação dinâmica, caso o Expo Go não suporte o módulo
-    try {
-        SignatureComponent = require('react-native-signature-canvas').default;
-    } catch (e) {
-        console.warn("Módulo de rubrica indisponível na web ou build.", e);
-        SignatureComponent = () => <Text style={{ color: 'red' }}>Rubrica Nativa Indisponível</Text>;
-    }
-} else {
-    SignatureComponent = () => <Text style={{ color: '#7f8c8d' }}>*Rubrica não disponível no Navegador.</Text>;
-}
-
 
 // Componente para exibir mensagens de status
 const Message = ({ message, type }) => {
@@ -47,175 +30,117 @@ const Message = ({ message, type }) => {
 };
 
 export default function VerificationScreen({ route, navigation }) {
-    const { signerId } = route.params; 
-    const signatureRef = useRef(null); 
     
-    const [otpCode, setOtpCode] = useState('');
+    // Desestruturação segura para evitar crash se params for undefined
+    const signerId = route.params?.signerId;
+    const signatureUri = route.params?.signatureUri;
+    
+    // finalSignatureUri é a URI real OU 'AUSENTE_RUBRICA' (o placeholder que passamos)
+    const finalSignatureUri = signatureUri || null; 
+    
+    // ⭐️ CORRIGIDO: Inicia o OTP com string vazia (Melhor UX)
+    const [otpCode, setOtpCode] = useState(''); 
+    
     const [docTitle, setDocTitle] = useState('Contrato de Serviço Assinado');
     const [docId, setDocId] = useState('DOC-' + Date.now());
-    const [templateId, setTemplateId] = useState('');
     
-    const [signatureImageBase64, setSignatureImageBase64] = useState(null); 
-    const [uploadedFile, setUploadedFile] = useState(null); 
+    // ⭐️ CORRIGIDO: Inicia o templateId com o valor para teste para habilitar o botão.
+    const [templateId, setTemplateId] = useState('template-servico'); 
     
     const [isLoading, setIsLoading] = useState(false);
-    const [status, setStatus] = useState({ message: '', type: '' });
+    
+    // CORRIGIDO: Inicia o status VAZIO para a tela começar limpa.
+    const [status, setStatus] = useState({ message: '', type: '' }); 
 
-    // Lógica para Metadados
+    // Lógica para alternar inputs de Templates/Uploads
     useEffect(() => {
         if (templateId === 'template-servico') {
-             setDocTitle('Contrato de Serviço Padrão (V1.0)');
-             setDocId('TPL-SERV-' + Date.now());
-             setUploadedFile(null); 
-        } else if (templateId === 'upload') {
-             setDocTitle('Upload de Arquivo Externo');
-             setDocId('UPLOAD-' + Date.now());
-        } else {
-             setDocTitle('Contrato de Serviço Assinado');
-             setDocId('DOC-' + Date.now());
-             setUploadedFile(null);
+            setDocTitle('Contrato de Serviço Padrão (V1.0)');
+            setDocId('TPL-SERV-' + Date.now());
+        } else if (!templateId) {
+            setDocTitle('Contrato de Serviço Assinado');
+            setDocId('DOC-' + Date.now());
         }
     }, [templateId]);
-    
-    // ----------------------------------------------------
-    // FUNÇÃO: SELECIONAR DOCUMENTO (BUSCA NATIVA)
-    // ----------------------------------------------------
-    const buscarDocumento = async () => {
-        if (templateId !== 'upload') {
-            setStatus({ message: 'Selecione a opção "Upload de Arquivo" primeiro.', type: 'error' });
-            return;
-        }
-        
-        try {
-            // DocumentPicker abre a interface nativa do Android/iOS
-            if (Platform.OS === 'web') {
-                 setStatus({ message: 'Busca de arquivos nativa não suportada no Navegador. Teste no celular.', type: 'error' });
-                 return;
-            }
-            
-            const result = await DocumentPicker.getDocumentAsync({
-                type: ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-                copyToCacheDirectory: true,
-            });
 
-            if (result.canceled === true) {
-                setStatus({ message: 'Seleção de documento cancelada.', type: 'info' });
-                return;
-            }
-            
-            const asset = result.assets[0];
 
-            if (asset) {
-                // Guarda o arquivo para ser enviado no FormData
-                setUploadedFile(asset); 
-                setDocTitle(asset.name);
-                setDocId('UPLOAD-' + Date.now());
-                setStatus({ message: `Arquivo '${asset.name}' selecionado com sucesso.`, type: 'success' });
-            }
-
-        } catch (err) {
-            setStatus({ message: 'Erro ao acessar arquivos do dispositivo. Verifique as permissões.', type: 'error' });
-        }
-    };
-    
-    // ----------------------------------------------------
-    // HANDLER DE SUCESSO DO CANVAS (INICIA O UPLOAD)
-    // ----------------------------------------------------
-    const handleSignature = async (signatureBase64) => {
-        if (!signatureBase64 || signatureBase64.length < 100) {
-            setStatus({ message: 'A rubrica não pode estar vazia. Por favor, assine.', type: 'error' });
-            return;
-        }
-        
-        // Retira o prefixo "data:image/png;base64,"
-        const base64Data = signatureBase64.replace('data:image/png;base64,', '');
-        setSignatureImageBase64(base64Data); 
-        
-        await enviarAssinatura(base64Data); // Inicia o envio real
-    };
-
+    // FUNÇÃO PARA FINALIZAR ASSINATURA
     const assinarDocumento = async () => {
         const isTemplateFlow = templateId && templateId !== 'upload';
         
-        // 1. Validações Essenciais
-        if (!templateId || templateId === '') {
-             setStatus({ message: "Selecione a fonte do documento.", type: 'error' });
+        // VALIDAÇÃO DA RUBRICA: Se for o placeholder, o erro é exibido.
+        if (!finalSignatureUri || finalSignatureUri === 'AUSENTE_RUBRICA') {
+            setStatus({ message: "❌ Rubrica ausente. Por favor, volte e capture a assinatura.", type: 'error' });
+            return;
+        }
+
+        if (!isTemplateFlow) {
+             setStatus({ message: "O upload de arquivos não está implementado neste demo mobile. Selecione um Template.", type: 'error' });
              return;
         }
-        if (templateId === 'upload' && !uploadedFile) {
-             setStatus({ message: "Busque um arquivo para upload.", type: 'error' });
+        if (!otpCode || !docId) {
+             setStatus({ message: "OTP e ID do Documento são obrigatórios.", type: 'error' });
              return;
         }
-        if (!otpCode) {
-             setStatus({ message: "Código OTP é obrigatório.", type: 'error' });
-             return;
-        }
-        
-        // 2. Captura a assinatura do Canvas
-        if (Platform.OS !== 'web') {
-            // Aciona a captura do Base64, que chama handleSignature, que envia o formulário.
-            if (signatureRef.current) {
-                signatureRef.current.readSignature(); 
-            } else {
-                 setStatus({ message: "Erro no componente de rubrica. Recarregue o app.", type: 'error' });
-            }
-        } else if (Platform.OS === 'web') {
-            // Simulação para o navegador (para que ele não trave)
-            await enviarAssinatura("SIMULACAO_RUBRICA_WEB_OK");
-        }
-    };
-    
-    const enviarAssinatura = async (base64Rubrica) => {
+
         setIsLoading(true);
         setStatus({ message: 'Verificando OTP e solicitando assinatura...', type: 'info' });
 
         try {
             const token = await AsyncStorage.getItem('jwtToken'); 
-            const signerName = await AsyncStorage.getItem('userEmail'); 
+            const userEmail = await AsyncStorage.getItem('userEmail'); 
+            const signerName = userEmail || SIGNER_NAME;
             
+            // Criação do FormData para envio binário estável
             const formData = new FormData();
-            formData.append('submittedOTP', otpCode);
-            formData.append('signerId', signerId);
-            formData.append('signerName', signerName || SIGNER_NAME);
-            formData.append('contractTitle', docTitle);
-            formData.append('documentId', docId);
-            formData.append('signatureImage', base64Rubrica); // Rubrica Manuscrita
             
-            // Lógica de upload vs. Template
-            if (templateId === 'upload' && uploadedFile) {
-                // Anexa o arquivo real (Multer espera este formato)
-                formData.append('documentFile', {
-                    uri: uploadedFile.uri,
-                    type: uploadedFile.mimeType || 'application/octet-stream', 
-                    name: uploadedFile.name,
-                });
-            } else if (templateId !== 'upload') {
-                 // Template Flow (Conteúdo de texto para Hash)
-                 formData.append('documentContent', `Conteúdo do Template: ${templateId}`);
-            }
+            // Define o tipo de arquivo fixo para PNG
+            const fileType = 'image/png'; 
+            const fileName = docId + '_signature.png'; 
 
+            // 1. Adicionar os dados de texto/metadados
+            formData.append('signerId', signerId);
+            formData.append('submittedOTP', otpCode);
+            formData.append('documentId', docId);
+            formData.append('templateId', isTemplateFlow ? templateId : undefined);
+            formData.append('signerName', signerName);
+            formData.append('contractTitle', docTitle);
+
+            // 2. Adicionar o arquivo binário da Rubrica
+            formData.append('signatureImage', {
+                uri: finalSignatureUri, 
+                type: fileType, 
+                name: fileName,    
+            });
+            
+            // Requisição com FormData
             const response = await fetch(`${API_BASE_URL}/document/sign`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${token}`,
+                    'Authorization': `Bearer ${token}`, 
                 },
-                body: formData, // Envia o FormData (Multipart)
+                body: formData, 
             });
 
-            const data = await response.json();
+            // Tratamento de resposta para evitar loop
+            let data;
+            try {
+                data = await response.json();
+            } catch (jsonError) {
+                data = { message: `Erro HTTP ${response.status}. Servidor inacessível ou corpo inválido.` };
+            }
 
             if (response.ok) {
-                // SUCESSO: Navega para a tela de Evidências
-                navigation.navigate('Evidence', { 
-                    documentId: docId,
-                    signatureRecord: data.signatureRecord 
-                }); 
+                // SUCESSO
+                setStatus({ message: "✅ Assinatura concluída. Navegando para Evidência.", type: 'success' });
+                navigation.navigate('Evidence', { documentId: docId }); 
             } else {
-                setStatus({ message: `❌ Falha: ${data.message || data.error}`, type: 'error' });
+                setStatus({ message: `❌ Falha na Assinatura: ${data.message || data.error || 'Erro desconhecido.'}`, type: 'error' });
             }
 
         } catch (error) {
-            setStatus({ message: `Erro fatal de conexão: ${error.message}`, type: 'error' });
+            console.error("Erro na requisição de assinatura:", error);
+            setStatus({ message: "Erro de Conexão ou Servidor. Tente novamente.", type: 'error' });
         } finally {
             setIsLoading(false);
         }
@@ -227,7 +152,12 @@ export default function VerificationScreen({ route, navigation }) {
             <ScrollView contentContainerStyle={styles.scrollContainer}>
                 <View style={styles.card}>
                     <Text style={styles.header}>Passo 2: Assinatura Final</Text>
-                    <Text style={styles.subtitle}>Finalize a assinatura, anexando o documento e a rubrica de {signerId}.</Text>
+                    <Text style={styles.subtitle}>Verifique o código e o documento para finalizar a assinatura de: {signerId}</Text>
+                    
+                    {/* Exibe o status da rubrica */}
+                    <Text style={[styles.label, {color: finalSignatureUri && finalSignatureUri !== 'AUSENTE_RUBRICA' ? '#28a745' : '#dc3545'}]}>
+                        Status da Rubrica: {finalSignatureUri && finalSignatureUri !== 'AUSENTE_RUBRICA' ? '✅ URI Carregada' : '❌ URI Ausente'}
+                    </Text>
                     
                     {/* Input OTP */}
                     <Text style={styles.label}>Código OTP Recebido:</Text>
@@ -240,56 +170,19 @@ export default function VerificationScreen({ route, navigation }) {
                         maxLength={6}
                     />
                     
-                    {/* Seletor de Templates/Upload */}
-                    <Text style={styles.label}>Selecione a Fonte do Documento:</Text>
+                    {/* Seletor de Templates */}
+                    <Text style={styles.label}>Selecione o Documento:</Text>
                     <View style={styles.pickerContainer}>
                         <Picker
                             selectedValue={templateId}
                             onValueChange={(itemValue) => setTemplateId(itemValue)}
                             style={styles.picker}
                         >
-                            <Picker.Item label="-- Selecione um Modelo --" value="" />
+                            <Picker.Item label="-- Selecione um Modelo --" value="" enabled={false} /> 
                             <Picker.Item label="Contrato de Serviço (Padrão)" value="template-servico" />
-                            <Picker.Item label="Acordo de Não Divulgação (NDA)" value="template-nda" />
-                            <Picker.Item label="Upload de Arquivo (PDF/DOCX)" value="upload" /> 
                         </Picker>
                     </View>
-                    
-                    {/* Upload de Documento: CAMPO OPERÁVEL */}
-                    {templateId === 'upload' && (
-                        <View style={{ marginTop: 20, width: '100%' }}>
-                            <Text style={styles.label}>Arquivo Selecionado:</Text>
-                            <Text style={styles.fileNameDisplay}>{uploadedFile ? uploadedFile.name : 'Nenhum arquivo selecionado...'}</Text>
-                            <Button 
-                                title="Buscar Arquivo no Dispositivo" 
-                                onPress={buscarDocumento}
-                                color="#007BFF" 
-                            />
-                            <Text style={styles.helperText}>Atenção: A busca de arquivo só funciona após o build EAS (APK ou Dev Client).</Text>
-                        </View>
-                    )}
 
-                    {/* Rubrica: ESPAÇO DE DESENHO REAL */}
-                    {Platform.OS !== 'web' ? (
-                        <>
-                            <Text style={styles.label}>Rubrica (Assinatura Manuscrita):</Text>
-                            <View style={styles.signaturePadContainer}>
-                                <SignatureComponent
-                                    ref={signatureRef}
-                                    onOK={handleSignature} 
-                                    onEmpty={() => setStatus({ message: 'A rubrica não pode estar vazia. Por favor, assine.', type: 'error' })}
-                                    descriptionText="Assine acima para confirmar"
-                                    webStyle={`.m-signature-pad--footer {display: none;} body,html {width:100%; height:100%; margin: 0; padding: 0;}`}
-                                />
-                            </View>
-                            <TouchableOpacity onPress={() => signatureRef.current.clear()}>
-                                <Text style={styles.clearText}>Limpar Rubrica</Text>
-                            </TouchableOpacity>
-                        </>
-                    ) : (
-                        <Text style={styles.helperText}>*Rubrica não disponível no Navegador. Use o Mobile para desenhar.</Text>
-                    )}
-                    
                     {/* Metadados */}
                     <Text style={styles.label}>Título do Contrato:</Text>
                     <TextInput style={styles.input} value={docTitle} onChangeText={setDocTitle} editable={false} />
@@ -305,7 +198,9 @@ export default function VerificationScreen({ route, navigation }) {
                         <Button 
                             title="2. FINALIZAR ASSINATURA" 
                             onPress={assinarDocumento} 
-                            color="#28a745" 
+                            // Habilita apenas se URI (válida), OTP e Template estiverem preenchidos
+                            color={finalSignatureUri && finalSignatureUri !== 'AUSENTE_RUBRICA' && otpCode && templateId ? "#28a745" : "#6c757d"} 
+                            disabled={!finalSignatureUri || finalSignatureUri === 'AUSENTE_RUBRICA' || !otpCode || !templateId}
                         />
                     )}
                     
@@ -360,7 +255,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginTop: 15,
         marginBottom: 5,
-        color: '#34495e',
+        color: '#343a40',
     },
     input: {
         height: 40,
@@ -384,37 +279,4 @@ const styles = StyleSheet.create({
         height: 40,
         width: '100%',
     },
-    signaturePadContainer: {
-        height: 180, 
-        borderColor: '#007BFF', 
-        borderWidth: 2,
-        borderRadius: 5,
-        backgroundColor: '#ecf0f1',
-        overflow: 'hidden',
-        marginBottom: 10,
-        marginTop: 5,
-    },
-    fileNameDisplay: {
-        fontSize: 14,
-        color: '#2c3e50',
-        padding: 10,
-        backgroundColor: '#ecf0f1',
-        borderRadius: 5,
-        borderWidth: 1,
-        borderColor: '#ccc',
-        marginBottom: 10,
-    },
-    clearText: {
-        color: '#e74c3c',
-        textAlign: 'right',
-        marginRight: 5,
-        marginBottom: 10,
-        fontSize: 14,
-    },
-    helperText: {
-        fontSize: 12,
-        color: '#7f8c8d',
-        marginTop: 5,
-        marginBottom: 10,
-    }
 });

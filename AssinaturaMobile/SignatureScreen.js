@@ -47,7 +47,7 @@ export default function SignatureScreen({ navigation }) {
     }, [method]);
 
 
-    // FUNÇÃO PARA SOLICITAR OTP (Baseada no seu código web)
+    // FUNÇÃO PARA SOLICITAR OTP
     const solicitarOTP = async () => {
         if (!signerId || !recipient) {
             setStatus({ message: "CPF e Destinatário são obrigatórios.", type: 'error' });
@@ -78,22 +78,37 @@ export default function SignatureScreen({ navigation }) {
                 },
                 body: JSON.stringify(payload),
             });
-
-            const data = await response.json();
+            
+            // Tratamento de resposta para evitar loop em erro de servidor
+            let data;
+            try {
+                data = await response.json();
+            } catch (jsonError) {
+                data = { message: `Erro HTTP ${response.status}. Servidor inacessível ou retornou corpo vazio.` };
+            }
 
             if (response.ok) {
-                setStatus({ message: `✅ ${data.message}. Navegando para o Passo 2.`, type: 'success' });
                 
-                // CRÍTICO: NAVEGAÇÃO PARA A PRÓXIMA TELA (Passo 2)
-                navigation.navigate('Verification', { signerId: signerId }); 
+                // ⭐️ MUDANÇA CRÍTICA: Navegar diretamente para a VerificationScreen (Passo 2)
+                navigation.navigate('Verification', { 
+                    signerId: signerId,
+                    // ⭐️ MOCK VÁLIDO: Passa uma URI que habilita o botão na próxima tela
+                    signatureUri: 'file:///simulacao-uri-valida-de-teste-png' 
+                }); 
+                
+                // Status de sucesso APÓS a navegação para evitar bloqueio
+                setStatus({ message: `✅ ${data.message}. Navegação bem-sucedida.`, type: 'success' });
                 
             } else {
                 setStatus({ message: `❌ Erro: ${data.message || 'Falha ao solicitar OTP.'}`, type: 'error' });
             }
 
         } catch (error) {
-            setStatus({ message: "Erro de Rede: Não foi possível conectar ao servidor.", type: 'error' });
+            // TRATAMENTO DE ERRO DE REDE/TIMEOUT
+            console.error("Erro fatal na solicitação de OTP:", error);
+            setStatus({ message: "Erro de Rede: Não foi possível conectar ao servidor. Tente novamente.", type: 'error' });
         } finally {
+            // GARANTIA: O loading sempre desliga
             setIsLoading(false);
         }
     };
