@@ -31,44 +31,45 @@ const Message = ({ message, type }) => {
 
 export default function VerificationScreen({ route, navigation }) {
     
-    // Desestruturação segura para evitar crash se params for undefined
+    // Desestruturação segura
     const signerId = route.params?.signerId;
     const signatureUri = route.params?.signatureUri;
-    
-    // finalSignatureUri é a URI real OU 'AUSENTE_RUBRICA' (o placeholder que passamos)
     const finalSignatureUri = signatureUri || null; 
     
-    // ⭐️ CORRIGIDO: Inicia o OTP com string vazia (Melhor UX)
     const [otpCode, setOtpCode] = useState(''); 
     
-    const [docTitle, setDocTitle] = useState('Contrato de Serviço Assinado');
-    const [docId, setDocId] = useState('DOC-' + Date.now());
+    // Inicia os metadados como vazio/genérico
+    const [docTitle, setDocTitle] = useState(''); 
+    const [docId, setDocId] = useState('');
     
-    // ⭐️ CORRIGIDO: Inicia o templateId com o valor para teste para habilitar o botão.
-    const [templateId, setTemplateId] = useState('template-servico'); 
+    // Inicia o templateId como vazio, forçando a seleção
+    const [templateId, setTemplateId] = useState(''); 
     
     const [isLoading, setIsLoading] = useState(false);
-    
-    // CORRIGIDO: Inicia o status VAZIO para a tela começar limpa.
     const [status, setStatus] = useState({ message: '', type: '' }); 
 
-    // Lógica para alternar inputs de Templates/Uploads
+    // Lógica para preencher Título e ID quando o Template é Selecionado
     useEffect(() => {
         if (templateId === 'template-servico') {
-            setDocTitle('Contrato de Serviço Padrão (V1.0)');
+            // Preenche o Título com o Padrão para que possa ser editado em seguida
+            setDocTitle('Contrato de Serviço Padrão (V1.0)'); 
             setDocId('TPL-SERV-' + Date.now());
         } else if (!templateId) {
-            setDocTitle('Contrato de Serviço Assinado');
-            setDocId('DOC-' + Date.now());
+             // Limpa/Reseta se nada for selecionado
+            setDocTitle('');
+            setDocId('');
         }
     }, [templateId]);
-
+    
+    // VARIÁVEL DE CONTROLE: Checa se um template válido foi selecionado
+    const isDocumentSelected = !!templateId; 
+    
 
     // FUNÇÃO PARA FINALIZAR ASSINATURA
     const assinarDocumento = async () => {
         const isTemplateFlow = templateId && templateId !== 'upload';
         
-        // VALIDAÇÃO DA RUBRICA: Se for o placeholder, o erro é exibido.
+        // VALIDAÇÃO DA RUBRICA
         if (!finalSignatureUri || finalSignatureUri === 'AUSENTE_RUBRICA') {
             setStatus({ message: "❌ Rubrica ausente. Por favor, volte e capture a assinatura.", type: 'error' });
             return;
@@ -78,8 +79,10 @@ export default function VerificationScreen({ route, navigation }) {
              setStatus({ message: "O upload de arquivos não está implementado neste demo mobile. Selecione um Template.", type: 'error' });
              return;
         }
-        if (!otpCode || !docId) {
-             setStatus({ message: "OTP e ID do Documento são obrigatórios.", type: 'error' });
+        
+        // VALIDAÇÃO CRÍTICA: Título do contrato não pode ser vazio
+        if (!otpCode || !docId || !docTitle) {
+             setStatus({ message: "OTP, Título e ID do Documento são obrigatórios.", type: 'error' });
              return;
         }
 
@@ -93,8 +96,6 @@ export default function VerificationScreen({ route, navigation }) {
             
             // Criação do FormData para envio binário estável
             const formData = new FormData();
-            
-            // Define o tipo de arquivo fixo para PNG
             const fileType = 'image/png'; 
             const fileName = docId + '_signature.png'; 
 
@@ -104,7 +105,7 @@ export default function VerificationScreen({ route, navigation }) {
             formData.append('documentId', docId);
             formData.append('templateId', isTemplateFlow ? templateId : undefined);
             formData.append('signerName', signerName);
-            formData.append('contractTitle', docTitle);
+            formData.append('contractTitle', docTitle); // Usa o título editável
 
             // 2. Adicionar o arquivo binário da Rubrica
             formData.append('signatureImage', {
@@ -185,10 +186,22 @@ export default function VerificationScreen({ route, navigation }) {
 
                     {/* Metadados */}
                     <Text style={styles.label}>Título do Contrato:</Text>
-                    <TextInput style={styles.input} value={docTitle} onChangeText={setDocTitle} editable={false} />
+                    <TextInput 
+                        style={[styles.input, !isDocumentSelected && styles.disabledInput]} 
+                        placeholder={isDocumentSelected ? "Digite o título do contrato" : "Selecione um documento"}
+                        value={docTitle} 
+                        onChangeText={setDocTitle} 
+                        // ⭐️ CORREÇÃO: Fica editável se o documento foi selecionado
+                        editable={isDocumentSelected} 
+                    />
                     
                     <Text style={styles.label}>ID Único do Documento:</Text>
-                    <TextInput style={styles.input} value={docId} onChangeText={setDocId} editable={false} />
+                    <TextInput 
+                        // ⭐️ CORREÇÃO: ID Único fica preenchido e sempre desabilitado
+                        style={[styles.input, styles.disabledInput]} 
+                        value={docId} 
+                        editable={false} 
+                    />
 
                     <Message message={status.message} type={status.type} />
 
@@ -198,9 +211,9 @@ export default function VerificationScreen({ route, navigation }) {
                         <Button 
                             title="2. FINALIZAR ASSINATURA" 
                             onPress={assinarDocumento} 
-                            // Habilita apenas se URI (válida), OTP e Template estiverem preenchidos
-                            color={finalSignatureUri && finalSignatureUri !== 'AUSENTE_RUBRICA' && otpCode && templateId ? "#28a745" : "#6c757d"} 
-                            disabled={!finalSignatureUri || finalSignatureUri === 'AUSENTE_RUBRICA' || !otpCode || !templateId}
+                            // Habilita apenas se URI (válida), OTP, Template, e TÍTULO (não vazio) estiverem preenchidos
+                            color={finalSignatureUri && finalSignatureUri !== 'AUSENTE_RUBRICA' && otpCode && templateId && docTitle ? "#28a745" : "#6c757d"} 
+                            disabled={!finalSignatureUri || finalSignatureUri === 'AUSENTE_RUBRICA' || !otpCode || !templateId || !docTitle}
                         />
                     )}
                     
@@ -279,4 +292,9 @@ const styles = StyleSheet.create({
         height: 40,
         width: '100%',
     },
+    // NOVO ESTILO: Para dar feedback visual de campo desabilitado
+    disabledInput: {
+        backgroundColor: '#f0f0f0',
+        color: '#6c757d'
+    }
 });
