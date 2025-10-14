@@ -4,57 +4,45 @@ const fs = require('fs');
 const multer = require('multer');
 const path = require('path'); 
 
+// ⭐️ CONSOLIDAÇÃO DE IMPORTS
 const authMiddleware = require('../middleware/authMiddleware');
 const cryptoService = require('../services/cryptoService');
 const tsaService = require('../services/tsaService');
 const otpService = require('../services/otpService');
 const dbService = require('../services/dbService');
 
-// Configuração do Multer com memoryStorage (CRUCIAL para Render e estabilidade)
-const upload = multer({ 
-    storage: multer.memoryStorage(),
-    limits: { 
-        fileSize: 5 * 1024 * 1024 // Limite de 5MB
-    }
-});
-
-// Campos esperados: documentFile (o documento) e signatureImage (a rubrica)
+// 1. CONFIGURAÇÃO DO MULTER
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 const uploadMiddleware = upload.fields([
     { name: 'documentFile', maxCount: 1 }, 
     { name: 'signatureImage', maxCount: 1 } 
 ]);
 
-// ⭐️ Variável global para pré-carregar o template e evitar ENOENT (Mais seguro)
+// 2. PRÉ-CARREGAMENTO DO TEMPLATE
+const TEMPLATE_FILENAME = 'Contrato_Teste.pdf';
 let CONTRATO_TEMPLATE_BUFFER = null;
 
 try {
-    const templateFileName = 'Contrato_Teste.pdf';
-    // Caminho corrigido, assumindo que templates está no diretório pai de routes/
-    const templatePath = path.join(__dirname, '..', 'templates', templateFileName);
+    const templatePath = path.join(__dirname, '..', 'templates', TEMPLATE_FILENAME);
     CONTRATO_TEMPLATE_BUFFER = fs.readFileSync(templatePath);
-    console.log(`Template ${templateFileName} pré-carregado com sucesso.`);
+    console.log(`Template ${TEMPLATE_FILENAME} pré-carregado com sucesso.`);
 } catch (e) {
     console.error(`[ERRO CRÍTICO ENOENT]: Não foi possível carregar o template.`, e.message);
 }
 
 
-// ROTA 1: GERAR E ENVIAR O TOKEN OTP (PROTEGIDA POR JWT)
+// ROTA 1: GERAR E ENVIAR O TOKEN OTP
 router.post('/otp/generate', authMiddleware, async (req, res) => {
     const { signerId, method, recipient } = req.body;
 
     if (!signerId || !method || !recipient) {
-        return res.status(400).json({
-            message: 'CPF do signatário (signerId), método (method) e destinatário (recipient) são obrigatórios.'
-        });
+        return res.status(400).json({ message: 'Campos obrigatórios ausentes.' });
     }
 
     try {
-        // Assume que otpService e sendToken estão implementados
         const token = otpService.generateToken(signerId);
         const message = await otpService.sendToken(method, recipient, token);
-
         res.status(200).json({ message });
-
     } catch (error) {
         console.error('[ERRO NA ROTA /otp/generate]:', error);
         res.status(500).json({ message: 'Erro interno ao processar a solicitação de OTP: ' + error.message });
@@ -62,136 +50,94 @@ router.post('/otp/generate', authMiddleware, async (req, res) => {
 });
 
 
-// ROTA 2: Assinatura com Upload ou Template Fixo (COMPLETO)
+// ROTA 2: Assinatura com Upload ou Template Fixo (POST)
 router.post('/document/sign', authMiddleware, uploadMiddleware, async (req, res) => {
 
     const { signerId, signerName, contractTitle, documentId, submittedOTP, templateId } = req.body;
     
-    const documentFile = req.files.documentFile ? req.files.documentFile[0] : null;
-    const rubricaFile = req.files.signatureImage ? req.files.signatureImage[0] : null; 
+    // ⭐️ CONSOLIDAÇÃO DA DESESTRUTURAÇÃO (Mais conciso)
+    const rubricaFile = req.files?.signatureImage?.[0]; 
+    const documentFile = req.files?.documentFile?.[0]; 
 
     let fileBuffer;
     let fileName = '';
     let fileSource = '';
-    // ⭐️ ALTERADO: Salvaremos o Hash ou uma URI de sucesso, não o Base64
     let visualRubricData = 'N/A'; 
 
     try {
         const isTemplateFlow = templateId && templateId !== 'upload';
 
         // 1. Validação Crítica dos Dados
-        if (!documentId || !submittedOTP) {
-             throw new Error("ID do Documento e OTP são obrigatórios.");
-        }
+        if (!documentId || !submittedOTP) throw new Error("ID do Documento e OTP são obrigatórios.");
+        if (!rubricaFile || !rubricaFile.buffer) return res.status(400).json({ error: "O arquivo da Rubrica está ausente ou corrompido." });
         
-        // ⭐️ Rubrica: Checagem de Buffer e Resiliência
-        if (!rubricaFile || !rubricaFile.buffer) {
-             return res.status(400).json({ error: "O arquivo da Rubrica está ausente ou corrompido no upload." });
-        }
-        
-        // 2. Determinação da Fonte do Arquivo (Template ou Upload)
+        // 2. Determinação da Fonte do Arquivo
         if (isTemplateFlow) {
              if (templateId === 'template-servico') {
-                 if (!CONTRATO_TEMPLATE_BUFFER) {
-                      throw new Error('O Template pré-carregado não está disponível no servidor.');
-                 }
-                 fileBuffer = CONTRTRATO_TEMPLATE_BUFFER;
-                 fileName = 'Contrato_Teste.pdf';
+                 if (!CONTRATO_TEMPLATE_BUFFER) throw new Error('O Template pré-carregado não está disponível no servidor.');
+                 
+                 fileBuffer = CONTRATO_TEMPLATE_BUFFER; // Usando o Buffer pré-carregado
+                 fileName = TEMPLATE_FILENAME; // Usando a constante
                  fileSource = 'Template Fixo: Contrato Serviço';
              } else {
                  throw new Error('Template fixo não encontrado na API.');
              }
         } else {
-             if (!documentFile) {
-                 return res.status(400).json({ error: "Arquivo de upload (PDF/Documento) ausente no fluxo de upload." });
-             }
+             if (!documentFile) return res.status(400).json({ error: "Arquivo de upload (PDF/Documento) ausente no fluxo de upload." });
+             
              fileBuffer = documentFile.buffer; 
              fileName = documentFile.originalname;
              fileSource = 'Upload do Cliente';
         }
 
-        // ⭐️ RESILIÊNCIA DE MEMÓRIA: Evita Buffer.toString('base64')
-        // Salva o HASH da rubrica para provar que o Buffer chegou.
+        // ⭐️ RESILIÊNCIA DE MEMÓRIA (Gera Hash)
         const rubricaHash = cryptoService.generateDocumentHash(rubricaFile.buffer); 
         visualRubricData = `HASH_RECEIVED:${rubricaHash}`; 
         
-        // Em um sistema real, o Buffer da rubrica seria enviado para o S3/Cloudinary aqui.
-
         // 3. AUTENTICAÇÃO E VALIDAÇÃO OTP
         const validationResult = otpService.validateToken(signerId, submittedOTP);
-        if (!validationResult.valid) {
-             return res.status(401).json({ error: validationResult.message }); 
-        }
+        if (!validationResult.valid) return res.status(401).json({ error: validationResult.message }); 
 
-        // 4. HASH DO CONTEÚDO BINÁRIO e ASSINATURA
+        // 4. GERAÇÃO DO REGISTRO
         const documentHash = cryptoService.generateDocumentHash(fileBuffer);
-
         const timestampData = tsaService.getTrustedTimestamp();
-        const dataToSign = `${documentHash}|${timestampData.timestamp}|${signerId}`;
-        const signatureValue = cryptoService.signData(dataToSign);
+        const signatureValue = cryptoService.signData(`${documentHash}|${timestampData.timestamp}|${signerId}`);
 
         const signatureRecord = {
-            documentId: documentId,
-            signerId: signerId,
-            signerName: signerName,
-            contractTitle: contractTitle,
-            fileMetadata: {
-                name: fileName,
-                source: fileSource,
-                rubricaSize: rubricaFile.size
-            },
+            documentId, signerId, signerName, contractTitle,
+            fileMetadata: { name: fileName, source: fileSource, rubricaSize: rubricaFile.size },
             signatureData: {
-                hash: documentHash,
-                signatureValue: signatureValue,
-                timestampData: timestampData,
-                authMethod: 'OTP',
-                visualRubric: visualRubricData // Hash de sucesso
+                hash: documentHash, signatureValue, timestampData,
+                authMethod: 'OTP', visualRubric: visualRubricData 
             },
             signedAt: new Date().toISOString()
         };
 
-        // 6. PERSISTÊNCIA 
         await dbService.saveSignatureRecord(signatureRecord);
 
-        res.status(200).json({
-            success: true,
-            message: "Assinatura digital avançada concluída e evidência salva.",
-            signatureRecord: { documentId: documentId } 
-        });
+        res.status(200).json({ success: true, message: "Assinatura concluída.", signatureRecord: { documentId } });
 
     } catch (error) {
         console.error("Erro ao processar assinatura:", error);
         
-        let errorMessage = "Falha interna no servidor. Tente novamente.";
+        let errorMessage = error.message || "Falha interna no servidor.";
         let statusCode = 500;
         
-        if (error.code === 'LIMIT_FILE_SIZE') {
-             errorMessage = 'Arquivo de assinatura muito grande.';
-             statusCode = 413;
-        } else if (error.message.includes("not valid")) { // Catch para falha de OTP do middleware
-             errorMessage = "OTP inválido ou expirado.";
-             statusCode = 401;
-        } else if (error.message.includes("Template pré-carregado")) {
-             errorMessage = "Falha interna: Template de documento não encontrado.";
-             statusCode = 500;
-        } else {
-            // Caso de falha de conexão com DB ou outra falha crítica.
-            errorMessage = error.message;
-        }
+        if (error.code === 'LIMIT_FILE_SIZE') { statusCode = 413; errorMessage = 'Arquivo de assinatura muito grande.'; } 
+        else if (error.message.includes("not valid")) { statusCode = 401; errorMessage = "OTP inválido ou expirado."; } 
+        else if (error.message.includes("Template pré-carregado")) { statusCode = 500; errorMessage = "Falha interna: Template de documento não encontrado."; } 
         
         res.status(statusCode).json({ error: errorMessage });
     }
 });
 
 
-// ⭐️ ROTA 3: DOWNLOAD DO DOCUMENTO ASSINADO (CAUSA DO CANNOT GET)
+// ROTA 3: DOWNLOAD DO DOCUMENTO ASSINADO (GET)
 router.get('/document/:documentId/download', async (req, res) => {
     const { documentId } = req.params;
 
     try {
-        // Este caminho deve ser idêntico ao do pré-carregamento do Buffer.
-        const templateFileName = 'Contrato_Teste.pdf';
-        const templatePath = path.join(__dirname, '..', 'templates', templateFileName);
+        const templatePath = path.join(__dirname, '..', 'templates', TEMPLATE_FILENAME);
         
         if (!fs.existsSync(templatePath)) {
             return res.status(404).json({ error: "Arquivo de template não encontrado no servidor." });
@@ -200,7 +146,6 @@ router.get('/document/:documentId/download', async (req, res) => {
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="${documentId}.pdf"`);
         
-        // Serve o arquivo PDF.
         fs.createReadStream(templatePath).pipe(res);
 
     } catch (error) {
@@ -210,9 +155,8 @@ router.get('/document/:documentId/download', async (req, res) => {
 });
 
 
-// ROTA 4: Buscar Evidência (MANTIDA)
+// ROTA 4: Buscar Evidência (GET)
 router.get('/document/:searchTerm/evidence', async (req, res) => {
-    // ... (código original mantido)
     const { searchTerm } = req.params;
 
     if (!searchTerm) {
