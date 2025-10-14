@@ -37,7 +37,7 @@ app.get('/', (req, res) => {
 // ⭐️ 1. ROTA DE DOWNLOAD PRIORITÁRIA (ISOLAMENTO DO 404)
 app.get('/api/v1/document/:documentId/download', (req, res) => {
     const { documentId } = req.params;
-    const templateFileName = 'Contrato_Teste.pdf';
+    const templateFileName = 'Contrato_Teste.pdf'; // Nome fixo do arquivo de teste
     
     // ⭐️ CAMINHO: path.join(__dirname, '..', 'templates', filename) é a forma correta de
     // apontar da pasta /src/app.js (onde está __dirname) para /templates/
