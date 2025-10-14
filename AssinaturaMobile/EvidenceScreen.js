@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
-import {
-    StyleSheet,
-    Text,
-    View,
-    TextInput,
-    Button,
+import React, { useState, useEffect } from 'react';
+import { 
+    StyleSheet, 
+    Text, 
+    View, 
+    TextInput, 
+    Button, 
     SafeAreaView,
-    ScrollView,
+    ScrollView, 
     ActivityIndicator,
     Alert,
 } from 'react-native';
+import * as Linking from 'expo-linking'; // ⭐️ Importação necessária para abrir URLs externas
+import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
 const API_BASE_URL = 'https://assinatura-avancada.onrender.com/api/v1'; 
 
@@ -24,38 +26,64 @@ const Message = ({ message, type }) => {
     );
 };
 
-// Componente para exibir os detalhes da evidência
+// ⭐️ Componente EvidenceDisplay com Botão de Visualização de PDF
 const EvidenceDisplay = ({ record }) => {
     const signedAt = new Date(record.signedAt).toLocaleString();
-    const hashShort = record.signatureData.hash.substring(0, 40) + '...';
     
-    // Tentamos exibir a rubrica se ela existir no registro (Base64)
-    const Rubrica = record.signatureData.visualRubric && record.signatureData.visualRubric !== 'N/A' 
-        ? (<Text style={styles.dataValue}>Rubrica visual anexada.</Text>)
+    const hashValue = record.signatureData.hash || 'Hash Ausente';
+    const hashShort = hashValue.length > 40 ? hashValue.substring(0, 40) + '...' : hashValue;
+    
+    const rubricaData = record.signatureData.visualRubric || 'N/A'; 
+    const RubricaStatus = rubricaData.includes('HASH_RECEIVED') || rubricaData.includes('URI_SIMULADA')
+        ? (<Text style={[styles.dataValue, {color: '#28a745'}]}>Rubrica anexada (Prova de recebimento Hash).</Text>)
         : (<Text style={styles.dataValue}>Nenhuma rubrica visual registrada.</Text>);
+
+    // ⭐️ FUNÇÃO PARA ABRIR O PDF
+    const handleOpenPDF = async () => {
+        // Rota do backend para download (necessita do documentId)
+         const PDF_URL = `${API_BASE_URL}/document/${record.documentId}/download`; 
+    
+        try {
+            const supported = await Linking.canOpenURL(PDF_URL);
+
+            if (supported) {
+                // Abre o PDF no visualizador nativo do aparelho
+                await Linking.openURL(PDF_URL);
+            } else {
+                Alert.alert(`Erro`, `Não foi possível abrir a URL: ${PDF_URL}`);
+            }
+        } catch (e) {
+            Alert.alert(`Erro`, `Falha ao abrir o documento: ${e.message}`);
+        }
+    };
 
 
     return (
         <View style={styles.evidenceCard}>
             <Text style={styles.evidenceHeader}>✅ EVIDÊNCIA LEGAL VERIFICADA</Text>
             
-            <Text style={styles.dataLabel}>Assinado em (Timestamp):</Text>
+            {/* Seus campos de dados */}
+            <Text style={styles.dataLabel}>Assinado em:</Text>
             <Text style={styles.dataValue}>{signedAt}</Text>
-
             <Text style={styles.dataLabel}>ID do Documento:</Text>
             <Text style={styles.dataValue}>{record.documentId}</Text>
-            
             <Text style={styles.dataLabel}>Nome do Signatário:</Text>
             <Text style={styles.dataValue}>{record.signerName}</Text>
-
-            <Text style={styles.dataLabel}>Hash Criptográfico (Prova de Integridade):</Text>
-            <Text style={[styles.dataValue, styles.hashText]}>{hashShort}</Text>
-            
+            <Text style={styles.dataLabel}>Hash Criptográfico (SHA-256):</Text>
+            <Text selectable={true} style={[styles.dataValue, styles.hashText]}>{hashShort}</Text>
             <Text style={styles.dataLabel}>Método de Autenticação:</Text>
             <Text style={styles.dataValue}>{record.signatureData.authMethod} (OTP)</Text>
-            
-            <Text style={styles.dataLabel}>Rubrica Manuscrita:</Text>
-            {Rubrica}
+            <Text style={styles.dataLabel}>Status da Rubrica:</Text>
+            {RubricaStatus}
+
+            {/* ⭐️ NOVO BOTÃO DE VISUALIZAÇÃO DE PDF */}
+            <View style={{ marginTop: 25 }}>
+                <Button
+                    title="VISUALIZAR DOCUMENTO ASSINADO (PDF)"
+                    onPress={handleOpenPDF}
+                    color="#28a745"
+                />
+            </View>
 
             <Text style={styles.helperText}>*A comparação do Hash em um sistema de auditoria comprova a integridade e não-repúdio.</Text>
         </View>
@@ -63,31 +91,51 @@ const EvidenceDisplay = ({ record }) => {
 };
 
 
-export default function EvidenceScreen({ navigation }) {
-    const [searchTerm, setSearchTerm] = useState('');
+export default function EvidenceScreen({ route, navigation }) {
+    
+    // ⭐️ CORREÇÃO: Inicializa com o documentId, se ele vier da rota 'Verification'
+    const initialDocId = route.params?.documentId || '';
+
+    const [searchTerm, setSearchTerm] = useState(initialDocId);
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState({ message: '', type: '' });
     const [evidenceRecord, setEvidenceRecord] = useState(null);
     
+    // ⭐️ Correção: Se o documentId veio da rota (após a assinatura), busca-o imediatamente
+    useEffect(() => {
+        if (initialDocId) {
+            // Chamamos a função com o ID recebido da rota
+            buscarEvidencia(initialDocId);
+        }
+    }, [initialDocId]);
 
-    const buscarEvidencia = async () => {
-        if (!searchTerm) {
+
+    const buscarEvidencia = async (idToSearch) => {
+        const id = idToSearch || searchTerm;
+
+        if (!id) {
             setStatus({ message: "Insira o ID do Documento ou Hash para buscar.", type: 'error' });
             return;
         }
 
         setIsLoading(true);
         setEvidenceRecord(null);
-        setStatus({ message: `Buscando evidência para: ${searchTerm}...`, type: 'info' });
+        setStatus({ message: `Buscando evidência para: ${id}...`, type: 'info' });
 
         try {
             // Rota GET /document/:searchTerm/evidence
-            const response = await fetch(`${API_BASE_URL}/document/${encodeURIComponent(searchTerm)}/evidence`, {
+            const response = await fetch(`${API_BASE_URL}/document/${encodeURIComponent(id)}/evidence`, {
                 method: 'GET',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' }, 
             });
             
-            const data = await response.json();
+            let data = {};
+            try {
+                data = await response.json();
+            } catch (jsonError) {
+                // Servidor retornou erro sem corpo JSON
+                data = { message: `Erro HTTP ${response.status}. Servidor inacessível.` };
+            }
 
             if (response.ok) {
                 setEvidenceRecord(data.evidenceRecord);
@@ -97,6 +145,7 @@ export default function EvidenceScreen({ navigation }) {
             }
 
         } catch (error) {
+            console.error("Erro de Rede ao buscar evidência:", error);
             setStatus({ message: "Erro de Conexão com a API. Verifique o Render.", type: 'error' });
         } finally {
             setIsLoading(false);
@@ -114,7 +163,7 @@ export default function EvidenceScreen({ navigation }) {
                     <Text style={styles.label}>Buscar por ID do Documento:</Text>
                     <TextInput
                         style={styles.input}
-                        placeholder="Ex: DOC-ALUGUEL-001 ou CPF"
+                        placeholder="Ex: TPL-SERV-..."
                         value={searchTerm}
                         onChangeText={setSearchTerm}
                         autoCapitalize="none"
@@ -127,12 +176,13 @@ export default function EvidenceScreen({ navigation }) {
                     ) : (
                         <Button 
                             title="Buscar Evidência Legal" 
-                            onPress={buscarEvidencia} 
+                            onPress={() => buscarEvidencia()} // Chama a função com o searchTerm atual
                             color="#2c3e50"
                         />
                     )}
 
                     {evidenceRecord && (
+                        // ⭐️ Renderiza o componente que agora contém o botão de PDF
                         <EvidenceDisplay record={evidenceRecord} />
                     )}
                     

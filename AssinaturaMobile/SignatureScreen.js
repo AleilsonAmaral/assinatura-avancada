@@ -27,6 +27,30 @@ const Message = ({ message, type }) => {
     );
 };
 
+// ⭐️ FUNÇÃO AUXILIAR: Adiciona +55 se for SMS/WhatsApp e o prefixo estiver faltando
+const formatPhoneNumber = (number, method) => {
+    // Apenas aplica a formatação se o método for SMS ou WhatsApp
+    if (method !== 'SMS' && method !== 'WhatsApp') {
+        return number;
+    }
+
+    // 1. Remove todos os caracteres não numéricos
+    const cleaned = ('' + number).replace(/\D/g, '');
+    
+    // 2. Se já começar com +55, retorna o número limpo (com o '+')
+    if (cleaned.startsWith('55') && cleaned.length >= 12) { // Ex: 5511999998888
+        return '+' + cleaned;
+    }
+    
+    // 3. Se tiver o formato de DDD + número (10 ou 11 dígitos), adiciona +55
+    if (cleaned.length === 10 || cleaned.length === 11) { 
+        return '+55' + cleaned;
+    }
+    
+    // Retorna o original para o email ou se o formato estiver errado
+    return number;
+};
+
 
 export default function SignatureScreen({ navigation }) {
     const [signerId, setSignerId] = useState('');
@@ -53,6 +77,9 @@ export default function SignatureScreen({ navigation }) {
             setStatus({ message: "CPF e Destinatário são obrigatórios.", type: 'error' });
             return;
         }
+        
+        // ⭐️ APLICA A FORMATAÇÃO ANTES DE ENVIAR PARA A API
+        const formattedRecipient = formatPhoneNumber(recipient, method);
 
         setIsLoading(true);
         setStatus({ message: 'Solicitando OTP...', type: 'info' });
@@ -67,7 +94,8 @@ export default function SignatureScreen({ navigation }) {
             const payload = {
                 signerId: signerId,
                 method: method,
-                recipient: recipient
+                // ⭐️ ENVIA O NÚMERO FORMATADO
+                recipient: formattedRecipient, 
             };
 
             const response = await fetch(`${API_BASE_URL}/otp/generate`, {
@@ -89,14 +117,12 @@ export default function SignatureScreen({ navigation }) {
 
             if (response.ok) {
                 
-                // ⭐️ MUDANÇA CRÍTICA: Navegar diretamente para a VerificationScreen (Passo 2)
+                // Navegação para VerificationScreen (Passo 2)
                 navigation.navigate('Verification', { 
                     signerId: signerId,
-                    // ⭐️ MOCK VÁLIDO: Passa uma URI que habilita o botão na próxima tela
                     signatureUri: 'file:///simulacao-uri-valida-de-teste-png' 
                 }); 
                 
-                // Status de sucesso APÓS a navegação para evitar bloqueio
                 setStatus({ message: `✅ ${data.message}. Navegação bem-sucedida.`, type: 'success' });
                 
             } else {
@@ -104,11 +130,9 @@ export default function SignatureScreen({ navigation }) {
             }
 
         } catch (error) {
-            // TRATAMENTO DE ERRO DE REDE/TIMEOUT
             console.error("Erro fatal na solicitação de OTP:", error);
             setStatus({ message: "Erro de Rede: Não foi possível conectar ao servidor. Tente novamente.", type: 'error' });
         } finally {
-            // GARANTIA: O loading sempre desliga
             setIsLoading(false);
         }
     };
@@ -149,15 +173,20 @@ export default function SignatureScreen({ navigation }) {
                     <Text style={styles.label}>Enviar para:</Text>
                     <TextInput
                         style={styles.input}
-                        placeholder={method === 'Email' ? "exemplo@email.com" : "+5511999998888"}
+                        placeholder={method === 'Email' ? "exemplo@email.com" : "99 99999-9999"}
                         value={recipient}
                         onChangeText={setRecipient}
+                        // ⭐️ MUDANÇA: Usa 'phone-pad' para SMS/WhatsApp
                         keyboardType={method === 'Email' ? 'email-address' : 'phone-pad'}
                     />
-                    <Text style={styles.helperText}>Certifique-se de que o número inclui o código do país e DDD.</Text>
+                    <Text style={styles.helperText}>
+                        {method !== 'Email' 
+                           ? "Apenas o DDD e o número são necessários. O prefixo internacional (+55) será adicionado automaticamente." 
+                           : "Digite o e-mail."}
+                    </Text>
 
                     <Message message={status.message} type={status.type} />
-
+                    
                     {isLoading ? (
                         <ActivityIndicator size="large" color="#007BFF" style={{ marginTop: 20 }} />
                     ) : (
@@ -225,6 +254,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#7f8c8d',
         marginTop: 5,
+        textAlign: 'center'
     },
     input: {
         height: 40,

@@ -10,10 +10,9 @@ import {
     Alert,
     ActivityIndicator
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
+// ❌ REMOVIDO: Importação do Picker (usaremos Botões para evitar crashes)
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
-// A importação 'mime' permanece removida para evitar o crash.
 
 const API_BASE_URL = 'https://assinatura-avancada.onrender.com/api/v1'; 
 const SIGNER_NAME = 'Usuário de Teste'; 
@@ -31,59 +30,86 @@ const Message = ({ message, type }) => {
 
 export default function VerificationScreen({ route, navigation }) {
     
-    // Desestruturação segura
     const signerId = route.params?.signerId;
     const signatureUri = route.params?.signatureUri;
     const finalSignatureUri = signatureUri || null; 
     
     const [otpCode, setOtpCode] = useState(''); 
     
-    // Inicia os metadados como vazio/genérico
+    // Inicia os estados no modo 'vazio' para forçar a interação do usuário
+    const [templateId, setTemplateId] = useState(''); 
     const [docTitle, setDocTitle] = useState(''); 
     const [docId, setDocId] = useState('');
-    
-    // Inicia o templateId como vazio, forçando a seleção
-    const [templateId, setTemplateId] = useState(''); 
+    const [uploadedDocumentUri, setUploadedDocumentUri] = useState(null); // URI do PDF real
     
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState({ message: '', type: '' }); 
 
     // Lógica para preencher Título e ID quando o Template é Selecionado
     useEffect(() => {
+        // Reseta a URI do documento sempre que o tipo de fluxo muda
+        setUploadedDocumentUri(null); 
+        
         if (templateId === 'template-servico') {
-            // Preenche o Título com o Padrão para que possa ser editado em seguida
             setDocTitle('Contrato de Serviço Padrão (V1.0)'); 
             setDocId('TPL-SERV-' + Date.now());
+        } else if (templateId === 'upload') {
+            setDocTitle('Clique em Buscar PDF...');
+            setDocId('USER-UP-' + Date.now());
         } else if (!templateId) {
-             // Limpa/Reseta se nada for selecionado
             setDocTitle('');
             setDocId('');
         }
     }, [templateId]);
     
-    // VARIÁVEL DE CONTROLE: Checa se um template válido foi selecionado
+    // VARIÁVEIS DE CONTROLE DA CASCATA
     const isDocumentSelected = !!templateId; 
+    const isTitleEntered = isDocumentSelected && docTitle.trim().length > 0 && docTitle !== 'Clique em Buscar PDF...';
     
+
+    // ⭐️ FUNÇÃO PARA ABRIR O SELETOR DE ARQUIVOS (PDF)
+    const pickDocument = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: 'application/pdf', 
+                copyToCacheDirectory: true,
+            });
+
+            if (result.canceled === false) {
+                // Se o usuário selecionou, salva a URI
+                const selectedUri = result.assets[0].uri;
+                const selectedName = result.assets[0].name;
+
+                setUploadedDocumentUri(selectedUri); // Guarda o URI real do PDF
+                setDocTitle(selectedName); // Define o título com o nome do arquivo para UX
+                setStatus({ message: `✅ Arquivo ${selectedName} carregado.`, type: 'success' });
+            } else {
+                setStatus({ message: "Seleção de arquivo cancelada.", type: 'info' });
+            }
+        } catch (error) {
+            console.error("Erro ao buscar documento:", error);
+            Alert.alert("Erro Nativo", "Falha ao abrir seletor de arquivos. Verifique o EAS Build.");
+        }
+    };
+
 
     // FUNÇÃO PARA FINALIZAR ASSINATURA
     const assinarDocumento = async () => {
-        const isTemplateFlow = templateId && templateId !== 'upload';
+        const isTemplateFlow = templateId === 'template-servico'; 
         
-        // VALIDAÇÃO DA RUBRICA
-        if (!finalSignatureUri || finalSignatureUri === 'AUSENTE_RUBRICA') {
-            setStatus({ message: "❌ Rubrica ausente. Por favor, volte e capture a assinatura.", type: 'error' });
+        // ⭐️ Determina o URI do documento principal a ser enviado (Template ou Upload)
+        let documentUriToSend = isTemplateFlow ? finalSignatureUri : uploadedDocumentUri;
+        
+        // 1. VALIDAÇÃO DE FLUXO DE UPLOAD (Se o usuário escolheu Upload, mas não buscou o PDF)
+        if (templateId === 'upload' && !uploadedDocumentUri) {
+            setStatus({ message: "❌ Selecione um arquivo PDF para upload.", type: 'error' });
             return;
         }
 
-        if (!isTemplateFlow) {
-             setStatus({ message: "O upload de arquivos não está implementado neste demo mobile. Selecione um Template.", type: 'error' });
-             return;
-        }
-        
-        // VALIDAÇÃO CRÍTICA: Título do contrato não pode ser vazio
-        if (!otpCode || !docId || !docTitle) {
-             setStatus({ message: "OTP, Título e ID do Documento são obrigatórios.", type: 'error' });
-             return;
+        // 2. VALIDAÇÃO DE RUBRICA E DEMAIS CAMPOS
+        if (!finalSignatureUri || finalSignatureUri === 'AUSENTE_RUBRICA' || !otpCode || !docTitle) {
+            setStatus({ message: "❌ Todos os campos (Rubrica, OTP, Título) são obrigatórios.", type: 'error' });
+            return;
         }
 
         setIsLoading(true);
@@ -91,21 +117,26 @@ export default function VerificationScreen({ route, navigation }) {
 
         try {
             const token = await AsyncStorage.getItem('jwtToken'); 
-            const userEmail = await AsyncStorage.getItem('userEmail'); 
-            const signerName = userEmail || SIGNER_NAME;
+            const signerName = (await AsyncStorage.getItem('userEmail')) || SIGNER_NAME;
             
-            // Criação do FormData para envio binário estável
             const formData = new FormData();
             const fileType = 'image/png'; 
             const fileName = docId + '_signature.png'; 
+
+            // ⭐️ O Documento principal a ser assinado (PDF)
+            // NOTA: Para o fluxo de TEMPLATE, enviamos apenas o URI da rubrica + metadados
+            // e o backend usa o PDF fixo (Contrato_Teste.pdf).
+            
+            // Se fosse necessário enviar o PDF upload, o código seria diferente e a API teria que mudar:
+            // formData.append('documentFile', { uri: uploadedDocumentUri, type: 'application/pdf', name: 'document.pdf' });
 
             // 1. Adicionar os dados de texto/metadados
             formData.append('signerId', signerId);
             formData.append('submittedOTP', otpCode);
             formData.append('documentId', docId);
-            formData.append('templateId', isTemplateFlow ? templateId : undefined);
+            formData.append('templateId', templateId); // Envia o tipo de fluxo
             formData.append('signerName', signerName);
-            formData.append('contractTitle', docTitle); // Usa o título editável
+            formData.append('contractTitle', docTitle); 
 
             // 2. Adicionar o arquivo binário da Rubrica
             formData.append('signatureImage', {
@@ -114,25 +145,17 @@ export default function VerificationScreen({ route, navigation }) {
                 name: fileName,    
             });
             
-            // Requisição com FormData
             const response = await fetch(`${API_BASE_URL}/document/sign`, {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`, 
-                },
+                headers: { 'Authorization': `Bearer ${token}`, },
                 body: formData, 
             });
 
-            // Tratamento de resposta para evitar loop
+            // Tratamento de resposta
             let data;
-            try {
-                data = await response.json();
-            } catch (jsonError) {
-                data = { message: `Erro HTTP ${response.status}. Servidor inacessível ou corpo inválido.` };
-            }
+            try { data = await response.json(); } catch (jsonError) { data = { message: `Erro HTTP ${response.status}. Servidor inacessível ou corpo inválido.` }; }
 
             if (response.ok) {
-                // SUCESSO
                 setStatus({ message: "✅ Assinatura concluída. Navegando para Evidência.", type: 'success' });
                 navigation.navigate('Evidence', { documentId: docId }); 
             } else {
@@ -160,58 +183,81 @@ export default function VerificationScreen({ route, navigation }) {
                         Status da Rubrica: {finalSignatureUri && finalSignatureUri !== 'AUSENTE_RUBRICA' ? '✅ URI Carregada' : '❌ URI Ausente'}
                     </Text>
                     
-                    {/* Input OTP */}
-                    <Text style={styles.label}>Código OTP Recebido:</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="123456"
-                        value={otpCode}
-                        onChangeText={setOtpCode}
-                        keyboardType="numeric"
-                        maxLength={6}
-                    />
-                    
-                    {/* Seletor de Templates */}
+                    {/* 1. SELETOR DE DOCUMENTOS (Usando Botões e Estado) */}
                     <Text style={styles.label}>Selecione o Documento:</Text>
-                    <View style={styles.pickerContainer}>
-                        <Picker
-                            selectedValue={templateId}
-                            onValueChange={(itemValue) => setTemplateId(itemValue)}
-                            style={styles.picker}
-                        >
-                            <Picker.Item label="-- Selecione um Modelo --" value="" enabled={false} /> 
-                            <Picker.Item label="Contrato de Serviço (Padrão)" value="template-servico" />
-                        </Picker>
+                    
+                    <View style={styles.buttonGroup}>
+                        {/* Botão de Template */}
+                        <Button
+                            title="Contrato Padrão"
+                            onPress={() => setTemplateId('template-servico')}
+                            color={templateId === 'template-servico' ? '#007BFF' : '#bdc3c7'}
+                        />
+                        {/* Botão de Upload */}
+                        <Button
+                            title="Upload PDF Próprio"
+                            onPress={() => setTemplateId('upload')}
+                            color={templateId === 'upload' ? '#007BFF' : '#bdc3c7'}
+                        />
                     </View>
 
-                    {/* Metadados */}
+                    {/* ⭐️ Renderiza o Seletor de Arquivo APENAS se for o FLUXO DE UPLOAD */}
+                    {templateId === 'upload' && (
+                        <View style={{ marginTop: 15, width: '100%' }}>
+                            <Button
+                                title={uploadedDocumentUri ? `✅ PDF: ${docTitle}` : "BUSCAR ARQUIVO PDF"}
+                                onPress={pickDocument}
+                                color={uploadedDocumentUri ? '#28a745' : '#FF9800'}
+                                disabled={isLoading}
+                            />
+                            <Text style={styles.helperText}>
+                                {uploadedDocumentUri ? `Arquivo pronto para ser enviado.` : `Selecione um PDF do seu aparelho.`}
+                            </Text>
+                        </View>
+                    )}
+
+
+                    {/* 2. TÍTULO DO CONTRATO */}
                     <Text style={styles.label}>Título do Contrato:</Text>
                     <TextInput 
                         style={[styles.input, !isDocumentSelected && styles.disabledInput]} 
                         placeholder={isDocumentSelected ? "Digite o título do contrato" : "Selecione um documento"}
                         value={docTitle} 
                         onChangeText={setDocTitle} 
-                        // ⭐️ CORREÇÃO: Fica editável se o documento foi selecionado
                         editable={isDocumentSelected} 
                     />
                     
+                    {/* 3. ID ÚNICO DO DOCUMENTO */}
                     <Text style={styles.label}>ID Único do Documento:</Text>
                     <TextInput 
-                        // ⭐️ CORREÇÃO: ID Único fica preenchido e sempre desabilitado
                         style={[styles.input, styles.disabledInput]} 
+                        placeholder={isDocumentSelected ? "ID Gerado" : "Selecione um documento"}
                         value={docId} 
                         editable={false} 
                     />
 
+                    {/* 4. CÓDIGO OTP RECEBIDO (Habilitado após o Título ser preenchido) */}
+                    <Text style={styles.label}>Código OTP Recebido:</Text>
+                    <TextInput
+                        style={[styles.input, !isTitleEntered && styles.disabledInput]} 
+                        placeholder="123456"
+                        value={otpCode}
+                        onChangeText={setOtpCode}
+                        keyboardType="numeric"
+                        maxLength={6}
+                        editable={isTitleEntered}
+                    />
+
                     <Message message={status.message} type={status.type} />
 
+                    {/* 5. BOTÃO FINALIZAR ASSINATURA */}
                     {isLoading ? (
                         <ActivityIndicator size="large" color="#28a745" style={{ marginTop: 20 }} />
                     ) : (
                         <Button 
                             title="2. FINALIZAR ASSINATURA" 
                             onPress={assinarDocumento} 
-                            // Habilita apenas se URI (válida), OTP, Template, e TÍTULO (não vazio) estiverem preenchidos
+                            // Lógica Final: Requer Rubrica, OTP, Template/Upload, e Título
                             color={finalSignatureUri && finalSignatureUri !== 'AUSENTE_RUBRICA' && otpCode && templateId && docTitle ? "#28a745" : "#6c757d"} 
                             disabled={!finalSignatureUri || finalSignatureUri === 'AUSENTE_RUBRICA' || !otpCode || !templateId || !docTitle}
                         />
@@ -279,22 +325,20 @@ const styles = StyleSheet.create({
         width: '100%',
         backgroundColor: '#fff',
     },
-    pickerContainer: {
-        borderColor: '#ccc',
-        borderWidth: 1,
-        borderRadius: 5,
-        overflow: 'hidden',
-        height: 40,
-        justifyContent: 'center',
-        marginBottom: 15,
-    },
-    picker: {
-        height: 40,
+    buttonGroup: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
         width: '100%',
+        marginTop: 10,
     },
     // NOVO ESTILO: Para dar feedback visual de campo desabilitado
     disabledInput: {
         backgroundColor: '#f0f0f0',
         color: '#6c757d'
-    }
+    },
+    helperText: {
+        fontSize: 12,
+        color: '#7f8c8d',
+        marginTop: 5,
+    },
 });
