@@ -19,10 +19,11 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.aleilson1.newstablemobile"
     },
     "web": {
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -40,7 +41,13 @@
       ]
     ],
     "experiments": {
-      "reactCompiler": true 
-    }
+      "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "1418d79d-2ab1-4017-8089-e18e2fa0fe2c"
+      }
+    },
+    "owner": "aleilson1"
   }
 }
