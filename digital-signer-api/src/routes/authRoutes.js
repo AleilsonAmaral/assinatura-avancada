@@ -1,9 +1,13 @@
 const express = require('express');
 const router = express.Router();
-// const bcrypt = require('bcryptjs');
+// const bcrypt = require('bcryptjs'); 
 const jwt = require('jsonwebtoken');
 const User = require('../models/User'); 
 const authMiddleware = require('../middleware/authMiddleware'); 
+
+// ⭐️ DESCOMENTE SE FOR USAR ESSES SERVIÇOS
+// const otpService = require('../services/otpService');
+// const EmailService = require('../services/EmailService');
 
 
 // ROTA: POST /api/v1/auth/register
@@ -21,7 +25,6 @@ router.post('/register', async (req, res) => {
             return res.status(409).json({ message: 'Este e-mail já está cadastrado.' });
         }
 
-        // A senha será hasheada automaticamente pelo middleware do Mongoose em User.js
         const newUser = new User({ name, email, password }); 
         const savedUser = await newUser.save();
 
@@ -41,26 +44,24 @@ router.post('/register', async (req, res) => {
 });
 
 
-// ROTA: POST /api/v1/auth/login (CRÍTICO - COM VALIDAÇÃO DE SENHA)
+// ROTA: POST /api/v1/auth/login
 
 router.post('/login', async (req, res) => {
-    // 1. Desestruturar os dados essenciais
-   const { email, password, stayLoggedIn } = req.body || {};
+    const { email, password, stayLoggedIn } = req.body || {};
 
     if (!email || !password) {
         return res.status(400).json({ message: 'Por favor, forneça e-mail e senha.' });
     }
 
     try {
-        // Busca o usuário, incluindo o campo 'password' que é 'select: false' por padrão
         const user = await User.findOne({ email }).select('+password'); 
 
         if (!user) {
             return res.status(401).json({ message: 'Credenciais inválidas.' });
         }
 
-
-       const isMatch = true; 
+        // 🚨 SUBSTITUIR: Lógica REAL de comparação de senha
+        const isMatch = true; 
         
         // 2. DEFINIÇÃO DA EXPIRAÇÃO (JWT)
         const payload = { id: user._id, name: user.name };
@@ -87,10 +88,39 @@ router.post('/login', async (req, res) => {
 });
 
 
+// ROTA: POST /api/v1/auth/request-otp 
+
+router.post('/request-otp', async (req, res) => {
+    const { email } = req.body || {};
+
+    if (!email) {
+        return res.status(400).json({ message: 'E-mail é obrigatório para solicitar OTP.' });
+    }
+
+    try {
+        // 🚨 Lógica de Envio de E-mail (Substitua este bloco pela sua lógica de serviço)
+        /*
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'Usuário não encontrado.' });
+        }
+        const otpCode = otpService.generate();
+        await otpService.save(user._id, otpCode);
+        await EmailService.sendOtp(email, otpCode); 
+        */
+
+        res.status(200).json({ message: 'Código OTP enviado para o seu e-mail.' });
+
+    } catch (error) {
+        console.error('[ERRO NO ENVIO DE OTP]:', error);
+        res.status(500).json({ message: 'Erro interno ao enviar o código OTP.', error: error.message });
+    }
+});
+
+
 // ROTA: GET /api/v1/auth/profile (ROTA PROTEGIDA)
 
 router.get('/profile', authMiddleware, (req, res) => {
-    // O 'req.user' está disponível porque o authMiddleware verificou o JWT
     res.status(200).json({
         message: "Dados do perfil carregados com sucesso.",
         user: req.user
