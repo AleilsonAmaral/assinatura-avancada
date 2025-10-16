@@ -9,8 +9,8 @@ const authMiddleware = require('../middleware/authMiddleware');
 // ROTA: POST /api/v1/auth/register
 
 router.post('/register', async (req, res) => {
-    const { name, email, password } = req.body;
-
+    const { name, email, password } = req.body || {};
+    
     if (!name || !email || !password) {
         return res.status(400).json({ message: 'Por favor, forneça nome, e-mail e senha.' });
     }
@@ -45,7 +45,7 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
     // 1. Desestruturar os dados essenciais
-    const { email, password, stayLoggedIn } = req.body;
+   const { email, password, stayLoggedIn } = req.body || {};
 
     if (!email || !password) {
         return res.status(400).json({ message: 'Por favor, forneça e-mail e senha.' });
