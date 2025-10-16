@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-// ⭐️ IMPORTAÇÕES ESSENCIAIS (Movidas para o topo)
+// ⭐️ IMPORTAÇÕES ESSENCIAIS
 const fs = require('fs');
 const path = require('path'); 
 
@@ -22,7 +22,13 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+// ******************************************************
+// 🎯 CORREÇÃO CRÍTICA PARA ERRO 500 (req.body undefined)
+// Garante que o Express consiga parsear o Body (JSON e URL-encoded)
 app.use(express.json()); 
+app.use(express.urlencoded({ extended: true })); 
+// ******************************************************
+
 
 // Rota de Saúde/Raiz
 app.get('/', (req, res) => {
