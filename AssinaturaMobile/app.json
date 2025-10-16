@@ -1,36 +1,10 @@
 {
-  "expo": {
-    "name": "AssinaturaMobile",
-    "slug": "AssinaturaMobile",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": false,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true,
-      "package": "com.aleilson1.AssinaturaMobile"
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "extra": {
-      "eas": {
-        "projectId": "f24d82fd-efb4-4333-afb4-b84db667f699"
-      }
-    },
-    "owner": "aleilson1"
+  "android": {
+    "package": "com.aleilson1.assinaturamobile"
+  },
+  "extra": {
+    "eas": {
+      "projectId": "070b9505-9eed-415c-8aca-8c41823e7844"
+    }
   }
 }
