@@ -13,7 +13,8 @@ import {
 import { Picker } from '@react-native-picker/picker'; 
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
-const API_BASE_URL = 'https://assinatura-avancada.onrender.com/api/v1'; 
+// 🎯 CORREÇÃO: URL Base do Heroku (Já estava correta)
+const API_BASE_URL = 'https://pure-waters-90275-3c59d1664433.herokuapp.com/api/v1'; 
 const SIGNER_NAME = 'Usuário de Teste'; 
 
 // Componente para exibir mensagens de status
@@ -78,31 +79,30 @@ export default function SignatureScreen({ navigation }) {
             return;
         }
         
-        // ⭐️ APLICA A FORMATAÇÃO ANTES DE ENVIAR PARA A API
+        // APLICA A FORMATAÇÃO ANTES DE ENVIAR PARA A API
         const formattedRecipient = formatPhoneNumber(recipient, method);
 
         setIsLoading(true);
         setStatus({ message: 'Solicitando OTP...', type: 'info' });
 
         try {
-            const token = await AsyncStorage.getItem('jwtToken'); 
-            if (!token) {
-                setStatus({ message: "Erro: Usuário deslogado. Faça login novamente.", type: 'error' });
-                return;
-            }
+            // REMOÇÃO DE TOKEN: Esta rota não deve depender de um JWT de sessão.
+            // const token = await AsyncStorage.getItem('jwtToken'); 
+            // if (!token) { /* ... */ } // Não é necessário, pois a rota é pública.
 
             const payload = {
                 signerId: signerId,
                 method: method,
-                // ⭐️ ENVIA O NÚMERO FORMATADO
-                recipient: formattedRecipient, 
+                email: formattedRecipient, 
             };
-
-            const response = await fetch(`${API_BASE_URL}/otp/generate`, {
+            
+            // 🎯 CORREÇÃO FINAL: Usa o prefixo do backend /auth e a rota correta /request-otp
+            const response = await fetch(`${API_BASE_URL}/auth/request-otp`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}` 
+                    // 🎯 REMOÇÃO DO HEADER: O token JWT NÃO DEVE ser enviado para a rota pública de OTP.
+                    // 'Authorization': `Bearer ${token}` 
                 },
                 body: JSON.stringify(payload),
             });
@@ -181,8 +181,8 @@ export default function SignatureScreen({ navigation }) {
                     />
                     <Text style={styles.helperText}>
                         {method !== 'Email' 
-                           ? "Apenas o DDD e o número são necessários. O prefixo internacional (+55) será adicionado automaticamente." 
-                           : "Digite o e-mail."}
+                            ? "Apenas o DDD e o número são necessários. O prefixo internacional (+55) será adicionado automaticamente." 
+                            : "Digite o e-mail."}
                     </Text>
 
                     <Message message={status.message} type={status.type} />

@@ -1,21 +1,17 @@
 const crypto = require('crypto');
 const dotenv = require('dotenv');
-const sgMail = require('@sendgrid/mail'); // SDK do SendGrid
+// 🎯 CORREÇÃO: Importa o MailgunService para usar no 'Email'
+const MailgunService = require('./MailgunService'); 
 
 dotenv.config();
 
 // CONFIGURAÇÕES
 const OTP_EXPIRATION_MS = 10 * 60 * 1000; // 10 minutos
 const activeTokens = new Map();
-const SENDER_EMAIL = process.env.SENDER_EMAIL; 
 const JWT_SECRET = process.env.JWT_SECRET; 
 
-// --- 1. INICIALIZAÇÃO SENDGRID ---
-// A chave é inicializada globalmente com a variável de ambiente
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-
 // ===============================================================
-// FUNÇÕES BÁSICAS DE TOKEN
+// FUNÇÕES BÁSICAS DE TOKEN (Lógica Principal)
 // ===============================================================
 
 function generateToken(signerId) {
@@ -39,47 +35,46 @@ function validateToken(signerId, submittedToken) {
 }
 
 // ===============================================================
-// FUNÇÃO DE ENVIO CENTRALIZADA (REAL SENDGRID)
+// FUNÇÃO DE ENVIO CENTRALIZADA (AGORA REALIZA ENVIO POR MAILGUN)
 // ===============================================================
 
 async function sendToken(method, recipient, token) {
     try {
         switch (method) {
             case 'Email':
-                const subject = `Seu código de acesso: ${token}`;
-                const html = `
-                    <div style="font-family: sans-serif; padding: 20px; border: 1px solid #ddd;">
-                        <h2 style="color: #3498db;">Confirmação de Assinatura Digital</h2>
-                        <p>Seu código de uso único (OTP) é:</p>
-                        <p style="font-size: 30px; font-weight: bold; letter-spacing: 3px; color: #2c3e50; background: #ecf0f1; padding: 15px; border-radius: 5px; display: inline-block;">${token}</p>
-                        <p>Este código expira em 10 minutos. Não o compartilhe.</p>
-                    </div>`;
-
-                const mailOptions = {
-                    from: SENDER_EMAIL, // CRÍTICO: E-mail verificado no SendGrid
-                    to: recipient,
-                    subject: subject,
-                    html: html
-                };
-
-                await sgMail.send(mailOptions);
-                console.log(`[LOG - ENVIO SENDGRID] ✅ E-mail OTP enviado para: ${recipient}`);
-                return `Token enviado para o e-mail ${recipient}.`;
-
+                // ✅ NOVA LÓGICA: Usa o MailgunService
+                try {
+                    const subject = `Seu código de acesso: ${token}`;
+                    const html = `
+                        <div style="font-family: sans-serif; padding: 20px;">
+                            <h2 style="color: #007BFF;">Confirmação de Assinatura Digital</h2>
+                            <p>Seu código de uso único (OTP) é:</p>
+                            <p style="font-size: 30px; font-weight: bold; letter-spacing: 3px; color: #2c3e50; background: #ecf0f1; padding: 15px; border-radius: 5px; display: inline-block;">${token}</p>
+                            <p>Este código expira em 10 minutos.</p>
+                        </div>`;
+                    
+                    // 🎯 Chama o serviço de envio do Mailgun
+                    await MailgunService.sendEmail(recipient, subject, html); 
+                    
+                    console.log(`[LOG - ENVIO MAILGUN] ✅ E-mail OTP enviado para: ${recipient}`);
+                    return `Token enviado para o e-mail ${recipient} via Mailgun.`;
+                } catch (error) {
+                    console.error('[ERRO NO ENVIO - MAILGUN]:', error.message);
+                    throw new Error(`Falha ao enviar o token via E-mail: ${error.message}.`);
+                }
+                
             case 'SMS':
             case 'WhatsApp':
-                // Voltamos para a simulação de log
+                // Mantemos a simulação (Solução Auditável) para evitar a falha de entrega final de e-mail.
                 console.log(`[LOG - SIMULAÇÃO] ✉️ TOKEN (Simulado) ${token} foi gerado para ${recipient} via ${method}.`);
                 return `Token para ${recipient} (via ${method}) foi gerado no console.`;
-
+                
             default:
                 throw new Error(`Método de envio '${method}' não suportado.`);
         }
     } catch (error) {
-        // Loga o erro detalhado do SendGrid ou da rede
-        const errorDetails = error.response ? JSON.stringify(error.response.body.errors) : error.message;
-        console.error(`[ERRO NO ENVIO - ${method}] para ${recipient}:`, errorDetails);
-        throw new Error(`Falha ao enviar o token via ${method}. Verifique a chave SENDGRID_API_KEY.`);
+        console.error('[ERRO GERAL - SENDTOKEN]:', error.message);
+        throw error;
     }
 }
 
@@ -89,5 +84,3 @@ module.exports = {
     validateToken,
     sendToken,
 };
-
-    

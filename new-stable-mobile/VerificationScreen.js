@@ -14,7 +14,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
 
-const API_BASE_URL = 'https://assinatura-avancada.onrender.com/api/v1'; 
+const API_BASE_URL = 'https://pure-waters-90275-3c59d1664433.herokuapp.com/api/v1';; 
 const SIGNER_NAME = 'Usuário de Teste'; 
 
 // Componente para exibir mensagens de status

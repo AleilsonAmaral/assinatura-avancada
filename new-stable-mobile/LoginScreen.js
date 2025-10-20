@@ -14,7 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome } from '@expo/vector-icons'; // Para o ícone de olho
 
 // URL CRÍTICA: Endereço Público do seu Deploy no Render
-const API_BASE_URL = 'https://assinatura-avancada.onrender.com/api/v1';
+const API_BASE_URL = 'https://pure-waters-90275-3c59d1664433.herokuapp.com/api/v1';
 
 export default function LoginScreen({ navigation }) {
     const [email, setEmail] = useState('');

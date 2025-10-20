@@ -16,12 +16,14 @@
   "author": "ALeilson",
   "license": "ISC",
   "dependencies": {
-    "@sendgrid/mail": "^8.1.6",
+    "axios": "^1.12.2",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
+    "form-data": "^4.0.4",
     "jsonwebtoken": "^9.0.2",
+    "mailgun.js": "^12.1.1",
     "mime": "^4.1.0",
     "mongoose": "^8.0.0",
     "multer": "^1.4.5-lts.1"

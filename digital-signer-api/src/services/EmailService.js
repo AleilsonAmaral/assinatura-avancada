@@ -1,54 +1,63 @@
-// 1. Importamos a biblioteca do Resend 
-const { Resend } = require('resend');
+// digital-signer-api/src/services/SinchService.js
 
-// 2. Inicializamos o Resend com a nossa chave secreta do arquivo .env
-//    É como "fazer login" no serviço.
-const resend = new Resend(process.env.RESEND_API_KEY);
+const axios = require('axios');
+// Adiciona a importação de Buffer
+const { Buffer } = require('node:buffer'); 
+// Endpoint da API de SMS do Sinch. A região 'eu' é globalmente acessível.
+const API_URL = 'https://eu.sms.api.sinch.com/xms/v1/'; 
 
-/**
- * Envia um e-mail usando a API do Resend.
- * Esta função é "async" porque enviar um e-mail leva tempo (é uma chamada de rede).
- * * @param {string} to O e-mail do destinatário (ex: "usuario@exemplo.com").
- * @param {string} subject O assunto do e-mail.
- * @param {string} html O corpo do e-mail em formato HTML.
- * @returns {Promise<{success: boolean, messageId: string}>} Uma promessa que resolve com o status do envio.
- */
-async function sendEmail(to, subject, html) {
-    // 3. Usamos um bloco try...catch. É uma boa prática, pois o envio de e-mail pode falhar
-    //    por muitos motivos (API fora do ar, chave errada, etc.).
-    try {
-        console.log(`[Email Service] Preparando para enviar e-mail para: ${to}`);
+const SinchService = {
+    /**
+     * Envia um código OTP via SMS usando a API HTTP do Sinch.
+     * Requer que as variáveis de ambiente SINCH_KEY_ID, SINCH_KEY_SECRET e SINCH_SMS_SENDER estejam configuradas.
+     * @param {string} phoneNumber - O número de telefone de destino (Ex: DDDXXXXXXXXX).
+     * @param {string} token - O código OTP de 6 dígitos.
+     */
+    sendSmsOtp: async (phoneNumber, token) => {
+        const sender = process.env.SINCH_SMS_SENDER; // Seu número Sinch (obtido no pré-requisito)
+        const keyId = process.env.SINCH_KEY_ID;
+        const keySecret = process.env.SINCH_KEY_SECRET;
 
-        // 4. Esta é a chamada principal. Usamos o método "send" do Resend.
-        const { data, error } = await resend.emails.send({
-            // 'from' é quem envia. Para testes, use 'onboarding@resend.dev'.
-            // Para produção, use seu e-mail de domínio verificado (ex: 'contato@seusite.com').
-            from: 'Assinatura Avançada <onboarding@resend.dev>',
-            
-            to: [to],         // O destinatário. Resend espera um array.
-            subject: subject, // O assunto que definimos.
-            html: html,       // O corpo HTML que criamos.
-        });
-
-        // 5. Verificamos se a API do Resend retornou um erro específico.
-        if (error) {
-            console.error('[Email Service] Erro retornado pela API do Resend:', error);
-            throw new Error('Falha no serviço de envio de e-mail.');
+        // 1. Verificação de Credenciais
+        if (!keyId || !keySecret || !sender) {
+            throw new Error("Credenciais Sinch incompletas (Key ID, Secret ou Sender faltando no Heroku Config).");
         }
 
-        console.log(`[Email Service] E-mail enviado com sucesso! Message ID: ${data.id}`);
+        const message = `Seu código de verificação para o Digital Signer é: ${token}. Não compartilhe este código.`;
         
-        // 6. Retornamos um objeto indicando sucesso e o ID da mensagem.
-        return { success: true, messageId: data.id };
+        try {
+            // 2. Monta a URL de envio
+            const sendEndpoint = `${API_URL}${keyId}/batches`;
+            
+            // 3. Autenticação: Sinch usa autenticação Basic (Key ID:Key Secret)
+            // Agora usando Buffer.from que está importado
+            const authString = Buffer.from(`${keyId}:${keySecret}`).toString('base64'); 
 
-    } catch (err) {
-        console.error('[Email Service] Exceção capturada ao tentar enviar e-mail:', err);
-        // Se ocorrer um erro, nós o lançamos novamente para que a função que chamou saiba que algo deu errado.
-        throw err;
+            // 4. Chamada da API usando Axios
+            const response = await axios.post(sendEndpoint, {
+                // Conteúdo da mensagem
+                from: sender,
+                to: [phoneNumber], // O Sinch espera um array de destinatários
+                body: message
+            }, {
+                // Headers de Autenticação
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Basic ${authString}`
+                }
+            });
+
+            console.log(`[LOG - SINCH] SMS enviado com sucesso. Status: ${response.status}, ID: ${response.data.batch_id}`);
+            return response.data;
+
+        } catch (error) {
+            // Captura erros específicos da API do Sinch
+            const errorDetails = error.response ? JSON.stringify(error.response.data) : error.message;
+            console.error('[ERRO - SINCH SERVICE]: Falha ao enviar SMS.', errorDetails);
+            // Lança um erro detalhado para ser capturado pela rota
+            throw new Error(`Falha no envio de SMS via Sinch. Detalhes: ${errorDetails}`);
+        }
     }
-}
-
-// 7. Exportamos a função "sendEmail" para que outros arquivos possam usá-la.
-module.exports = {
-    sendEmail
 };
+
+module.exports = SinchService;

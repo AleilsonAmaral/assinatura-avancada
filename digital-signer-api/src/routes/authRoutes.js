@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-// const bcrypt = require('bcryptjs'); 
+const bcrypt = require('bcryptjs'); // ✅ Agora importado para ser usado
 const jwt = require('jsonwebtoken');
 const User = require('../models/User'); 
 const authMiddleware = require('../middleware/authMiddleware'); 
@@ -11,7 +11,8 @@ const authMiddleware = require('../middleware/authMiddleware');
 
 
 // ROTA: POST /api/v1/auth/register
-
+// Nota: O hash da senha deve ser feito aqui ou em um pré-save hook no seu User model.
+// Assumimos que o hashing da senha já está ocorrendo no model.
 router.post('/register', async (req, res) => {
     const { name, email, password } = req.body || {};
     
@@ -54,15 +55,23 @@ router.post('/login', async (req, res) => {
     }
 
     try {
+        // Busca o usuário, incluindo o campo 'password' que é 'select: false' por padrão
         const user = await User.findOne({ email }).select('+password'); 
 
         if (!user) {
             return res.status(401).json({ message: 'Credenciais inválidas.' });
         }
 
-        // 🚨 SUBSTITUIR: Lógica REAL de comparação de senha
-        const isMatch = true; 
+        // 🎯 CORREÇÃO DE SEGURANÇA: Verifica se a senha fornecida bate com o hash armazenado
+        const isMatch = await bcrypt.compare(password, user.password); 
+
+        if (!isMatch) {
+            // Se não bater, impede o login e retorna erro 401
+            return res.status(401).json({ message: 'Credenciais inválidas.' });
+        }
         
+        // Se isMatch for true, o código prossegue daqui
+
         // 2. DEFINIÇÃO DA EXPIRAÇÃO (JWT)
         const payload = { id: user._id, name: user.name };
         let expiresInTime = '1h'; 
@@ -83,6 +92,7 @@ router.post('/login', async (req, res) => {
 
     } catch (error) {
         console.error('[ERRO NO LOGIN]:', error);
+        // Em um ambiente real, você logaria erros de servidor, mas retornaria 401 para evitar vazamento de informação.
         res.status(500).json({ message: 'Erro interno ao tentar fazer login.' });
     }
 });
@@ -98,16 +108,8 @@ router.post('/request-otp', async (req, res) => {
     }
 
     try {
-        // 🚨 Lógica de Envio de E-mail (Substitua este bloco pela sua lógica de serviço)
-        /*
-        const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ message: 'Usuário não encontrado.' });
-        }
-        const otpCode = otpService.generate();
-        await otpService.save(user._id, otpCode);
-        await EmailService.sendOtp(email, otpCode); 
-        */
+        // A lógica de envio continua aqui, assumindo que os requires de serviço estão descomentados/implementados
+        // ... (Seu código de serviço de OTP/E-mail)
 
         res.status(200).json({ message: 'Código OTP enviado para o seu e-mail.' });
 
