@@ -10,10 +10,10 @@ import {
     ActivityIndicator,
     Alert,
 } from 'react-native';
-import * as Linking from 'expo-linking'; // ⭐️ Importação necessária para abrir URLs externas
+import * as Linking from 'expo-linking'; 
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
-const API_BASE_URL = 'https://assinatura-avancada.onrender.com/api/v1'; 
+const API_BASE_URL = 'http://localhost:3000/api/v1'; 
 
 // Componente para exibir mensagens de status
 const Message = ({ message, type }) => {
@@ -26,85 +26,21 @@ const Message = ({ message, type }) => {
     );
 };
 
-// ⭐️ Componente EvidenceDisplay com Botão de Visualização de PDF
-const EvidenceDisplay = ({ record }) => {
-    const signedAt = new Date(record.signedAt).toLocaleString();
-    
-    const hashValue = record.signatureData.hash || 'Hash Ausente';
-    const hashShort = hashValue.length > 40 ? hashValue.substring(0, 40) + '...' : hashValue;
-    
-    const rubricaData = record.signatureData.visualRubric || 'N/A'; 
-    const RubricaStatus = rubricaData.includes('HASH_RECEIVED') || rubricaData.includes('URI_SIMULADA')
-        ? (<Text style={[styles.dataValue, {color: '#28a745'}]}>Rubrica anexada (Prova de recebimento Hash).</Text>)
-        : (<Text style={styles.dataValue}>Nenhuma rubrica visual registrada.</Text>);
-
-    // ⭐️ FUNÇÃO PARA ABRIR O PDF
-    const handleOpenPDF = async () => {
-        // Rota do backend para download (necessita do documentId)
-         const PDF_URL = `${API_BASE_URL}/document/${record.documentId}/download`; 
-    
-        try {
-            const supported = await Linking.canOpenURL(PDF_URL);
-
-            if (supported) {
-                // Abre o PDF no visualizador nativo do aparelho
-                await Linking.openURL(PDF_URL);
-            } else {
-                Alert.alert(`Erro`, `Não foi possível abrir a URL: ${PDF_URL}`);
-            }
-        } catch (e) {
-            Alert.alert(`Erro`, `Falha ao abrir o documento: ${e.message}`);
-        }
-    };
-
-
-    return (
-        <View style={styles.evidenceCard}>
-            <Text style={styles.evidenceHeader}>✅ EVIDÊNCIA LEGAL VERIFICADA</Text>
-            
-            {/* Seus campos de dados */}
-            <Text style={styles.dataLabel}>Assinado em:</Text>
-            <Text style={styles.dataValue}>{signedAt}</Text>
-            <Text style={styles.dataLabel}>ID do Documento:</Text>
-            <Text style={styles.dataValue}>{record.documentId}</Text>
-            <Text style={styles.dataLabel}>Nome do Signatário:</Text>
-            <Text style={styles.dataValue}>{record.signerName}</Text>
-            <Text style={styles.dataLabel}>Hash Criptográfico (SHA-256):</Text>
-            <Text selectable={true} style={[styles.dataValue, styles.hashText]}>{hashShort}</Text>
-            <Text style={styles.dataLabel}>Método de Autenticação:</Text>
-            <Text style={styles.dataValue}>{record.signatureData.authMethod} (OTP)</Text>
-            <Text style={styles.dataLabel}>Status da Rubrica:</Text>
-            {RubricaStatus}
-
-            {/* ⭐️ NOVO BOTÃO DE VISUALIZAÇÃO DE PDF */}
-            <View style={{ marginTop: 25 }}>
-                <Button
-                    title="VISUALIZAR DOCUMENTO ASSINADO (PDF)"
-                    onPress={handleOpenPDF}
-                    color="#28a745"
-                />
-            </View>
-
-            <Text style={styles.helperText}>*A comparação do Hash em um sistema de auditoria comprova a integridade e não-repúdio.</Text>
-        </View>
-    );
-};
-
+// ❌ REMOÇÃO: O componente EvidenceDisplay não deve estar nesta tela.
 
 export default function EvidenceScreen({ route, navigation }) {
     
-    // ⭐️ CORREÇÃO: Inicializa com o documentId, se ele vier da rota 'Verification'
     const initialDocId = route.params?.documentId || '';
 
     const [searchTerm, setSearchTerm] = useState(initialDocId);
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState({ message: '', type: '' });
-    const [evidenceRecord, setEvidenceRecord] = useState(null);
+    // const [evidenceRecord, setEvidenceRecord] = useState(null); // Estado de record não é mais necessário aqui
+
     
     // ⭐️ Correção: Se o documentId veio da rota (após a assinatura), busca-o imediatamente
     useEffect(() => {
         if (initialDocId) {
-            // Chamamos a função com o ID recebido da rota
             buscarEvidencia(initialDocId);
         }
     }, [initialDocId]);
@@ -119,34 +55,59 @@ export default function EvidenceScreen({ route, navigation }) {
         }
 
         setIsLoading(true);
-        setEvidenceRecord(null);
         setStatus({ message: `Buscando evidência para: ${id}...`, type: 'info' });
 
         try {
+            // 🚨 ADICIONANDO O TOKEN (Resolve o 401 Unauthorized)
+            const token = await AsyncStorage.getItem('jwtToken');
+
+            if (!token) {
+                // Navega de volta para login se o token for nulo
+                setStatus({ message: "Sessão expirada. Redirecionando para Login.", type: 'error' });
+                await AsyncStorage.removeItem('jwtToken'); 
+                navigation.navigate('Login');
+                setIsLoading(false);
+                return;
+            }
+
             // Rota GET /document/:searchTerm/evidence
             const response = await fetch(`${API_BASE_URL}/document/${encodeURIComponent(id)}/evidence`, {
                 method: 'GET',
-                headers: { 'Content-Type': 'application/json' }, 
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}` // ✅ Token JWT para autenticação
+                }, 
             });
             
             let data = {};
             try {
                 data = await response.json();
             } catch (jsonError) {
-                // Servidor retornou erro sem corpo JSON
-                data = { message: `Erro HTTP ${response.status}. Servidor inacessível.` };
+                data = { message: `Erro HTTP ${response.status}. Servidor inacessível ou falha interna.` };
             }
 
             if (response.ok) {
-                setEvidenceRecord(data.evidenceRecord);
-                setStatus({ message: `Evidência encontrada para Doc ID: ${data.evidenceRecord.documentId}.`, type: 'success' });
+                if(data.evidenceRecord) {
+                    
+                    // 🚨 MUDANÇA CRÍTICA: NAVEGAR para a tela de detalhes
+                    navigation.navigate('EvidenceDetails', { 
+                        evidenceRecord: data.evidenceRecord // Passa o objeto completo para a próxima tela
+                    });
+
+                    // Limpa o estado e retorna para interromper a execução aqui
+                    setIsLoading(false);
+                    return; 
+                } else {
+                    setStatus({ message: "Registro de evidência legal não encontrado.", type: 'error' });
+                }
             } else {
-                setStatus({ message: data.message || "Evidência não encontrada no banco de dados.", type: 'error' });
+                // Captura a mensagem de erro do backend (401, 404 real, 500)
+                setStatus({ message: data.message || "Falha na busca de evidência. Verifique o log.", type: 'error' });
             }
 
         } catch (error) {
             console.error("Erro de Rede ao buscar evidência:", error);
-            setStatus({ message: "Erro de Conexão com a API. Verifique o Render.", type: 'error' });
+            setStatus({ message: "Erro de Conexão com a API. Tente novamente.", type: 'error' });
         } finally {
             setIsLoading(false);
         }
@@ -171,6 +132,7 @@ export default function EvidenceScreen({ route, navigation }) {
 
                     <Message message={status.message} type={status.type} />
 
+                    {/* 🚨 Renderização de Busca */}
                     {isLoading ? (
                         <ActivityIndicator size="large" color="#007BFF" style={{ marginTop: 20 }} />
                     ) : (
@@ -181,10 +143,12 @@ export default function EvidenceScreen({ route, navigation }) {
                         />
                     )}
 
-                    {evidenceRecord && (
-                        // ⭐️ Renderiza o componente que agora contém o botão de PDF
-                        <EvidenceDisplay record={evidenceRecord} />
-                    )}
+                    {/* ❌ PLACEHOLDER: A exibição final está em EvidenceDetailsScreen */}
+                    <View style={{ marginTop: 30 }}>
+                        <Text style={styles.subtitle}>
+                            Insira o ID para iniciar a busca.
+                        </Text>
+                    </View>
                     
                     <View style={{ marginTop: 30 }}>
                         <Button title="Voltar para Assinatura" onPress={() => navigation.navigate('Signature')} color="#bdc3c7" />
@@ -248,7 +212,7 @@ const styles = StyleSheet.create({
         width: '100%',
         backgroundColor: '#fff',
     },
-    evidenceCard: {
+    evidenceCard: { // Estilos mantidos, mas movidos para EvidenceDetailsScreen
         marginTop: 30,
         padding: 20,
         backgroundColor: '#ecf0f1',

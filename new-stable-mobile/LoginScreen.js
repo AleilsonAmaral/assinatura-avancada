@@ -8,13 +8,12 @@ import {
     Alert,
     ActivityIndicator,
     SafeAreaView,
-    TouchableOpacity // Necessário para o ícone de "ver senha"
+    TouchableOpacity
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { FontAwesome } from '@expo/vector-icons'; // Para o ícone de olho
+import { FontAwesome } from '@expo/vector-icons';
 
-// URL CRÍTICA: Endereço Público do seu Deploy no Render
-const API_BASE_URL = 'https://pure-waters-90275-3c59d1664433.herokuapp.com/api/v1';
+const API_BASE_URL = 'http://localhost:3000/api/v1'
 
 export default function LoginScreen({ navigation }) {
     const [email, setEmail] = useState('');
@@ -22,24 +21,22 @@ export default function LoginScreen({ navigation }) {
     const [isLoading, setIsLoading] = useState(false);
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [statusMessage, setStatusMessage] = useState('');
-    const [showPassword, setShowPassword] = useState(false); // ESTADO PARA CONTROLAR A VISIBILIDADE
+    const [showPassword, setShowPassword] = useState(false);
 
     // Verifica o estado de login ao iniciar o app
-    useEffect(() => { // CORRIGIDO: Deve ser useEffect para funções assíncronas
+    useEffect(() => {
         const checkLoginStatus = async () => {
-             try {
+            try {
                 const token = await AsyncStorage.getItem('jwtToken');
                 if (token) {
                     setIsLoggedIn(true);
-                    // Navega diretamente para a tela de assinatura se o token existir
-                    // navigation.navigate('Signature'); 
                 }
             } catch (e) {
                 console.error("Erro ao verificar login inicial:", e);
             }
         };
         checkLoginStatus();
-    }, []); // O array vazio garante que roda apenas uma vez
+    }, []);
 
     // FUNÇÃO DE LOGIN
     const handleLogin = async () => {
@@ -65,7 +62,7 @@ export default function LoginScreen({ navigation }) {
                 await AsyncStorage.setItem('userEmail', email);
 
                 Alert.alert("Sucesso!", "Login realizado. Navegando...");
-                navigation.navigate('Signature'); // Navega para a próxima tela
+                navigation.navigate('Signature');
 
             } else {
                 setStatusMessage(data.message || "Credenciais inválidas. Verifique a senha.");
@@ -78,7 +75,7 @@ export default function LoginScreen({ navigation }) {
         }
     };
 
-    // BLOCO DE RENDERIZAÇÃO
+    // BLOCO DE RENDERIZAÇÃO (COMPACTADO)
     return (
         <SafeAreaView style={styles.container}>
             <Text style={styles.title}>Assinatura Digital - Login</Text>
@@ -98,26 +95,24 @@ export default function LoginScreen({ navigation }) {
                 keyboardType="email-address"
                 autoCapitalize="none"
             />
-            
-            {/* NOVO: Campo de Senha com Toggle */}
+
+            {/* Campo de Senha com Toggle */}
             <View style={styles.passwordContainer}>
                 <TextInput
                     style={styles.passwordInput}
                     placeholder="Senha"
                     value={password}
                     onChangeText={setPassword}
-                    // CRÍTICO: Alterna entre texto visível (false) e oculto (true)
-                    secureTextEntry={!showPassword} 
+                    secureTextEntry={!showPassword}
                 />
-                <TouchableOpacity 
-                    style={styles.toggleButton} 
+                <TouchableOpacity
+                    style={styles.toggleButton}
                     onPress={() => setShowPassword(!showPassword)}
                 >
-                    <FontAwesome 
-                        // CRÍTICO: Troca o ícone (olho aberto ou fechado)
-                        name={showPassword ? 'eye-slash' : 'eye'} 
-                        size={20} 
-                        color="#666" 
+                    <FontAwesome
+                        name={showPassword ? 'eye-slash' : 'eye'}
+                        size={20}
+                        color="#666"
                     />
                 </TouchableOpacity>
             </View>
@@ -135,9 +130,11 @@ export default function LoginScreen({ navigation }) {
                 </View>
             )}
 
-            {/* NOVO: Opção Criar Conta */}
-            <TouchableOpacity style={styles.secondaryAction} onPress={() => Alert.alert("Registro", "Esta funcionalidade exige a rota /auth/register no Backend.")}>
-                 <Text style={styles.secondaryText}>Não tem conta? Crie uma</Text>
+            <TouchableOpacity
+                style={styles.secondaryAction}
+                onPress={() => navigation.navigate('Register')}
+            >
+                <Text style={styles.secondaryText}>Não tem conta? Crie uma</Text>
             </TouchableOpacity>
 
         </SafeAreaView>
@@ -200,7 +197,7 @@ const styles = StyleSheet.create({
         width: '90%',
         padding: 10,
         marginBottom: 10,
-        backgroundColor: '#e8f5e9', 
+        backgroundColor: '#e8f5e9',
         borderColor: '#27ae60',
         borderWidth: 1,
         borderRadius: 5,

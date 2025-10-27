@@ -10,11 +10,20 @@ import {
     Alert,
     ActivityIndicator
 } from 'react-native';
-// ❌ REMOVIDO: Importação do Picker (usaremos Botões para evitar crashes)
+// 🚨 Importações corrigidas
+import * as DocumentPicker from 'expo-document-picker'; 
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
+// 🚨 NOVO: Importação do Buffer para Polyfill (Assumindo que 'buffer' foi instalado)
+import { Buffer } from 'buffer';
 
-const API_BASE_URL = 'https://pure-waters-90275-3c59d1664433.herokuapp.com/api/v1';; 
+// 🚨 POLYFILL PARA GARANTIR QUE O BUFFER ESTEJA DISPONÍVEL GLOBALMENTE
+if (typeof global.Buffer === 'undefined') {
+    global.Buffer = Buffer;
+}
+
+// 🚨 URL CORRIGIDA: Aponta para o Backend Local
+const API_BASE_URL = 'http://localhost:3000/api/v1'; 
 const SIGNER_NAME = 'Usuário de Teste'; 
 
 // Componente para exibir mensagens de status
@@ -28,34 +37,60 @@ const Message = ({ message, type }) => {
     );
 };
 
+// ⭐️ FUNÇÃO AUXILIAR: Converte URI local em um Blob para ser anexado ao FormData
+const uriToBlob = async (uri) => {
+    // Dados Base64 mockados para simulação de rubrica (Pixel PNG transparente)
+    const mockDataBase64 = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; 
+    
+    // 🚨 CORREÇÃO: Usa Buffer.from(..., 'base64') para decodificar o mock
+    if (uri && uri.includes('simulacao-uri-valida')) {
+        
+        // 1. Decodifica o Base64 usando Buffer (agora disponível globalmente)
+        const mockBuffer = Buffer.from(mockDataBase64, 'base64');
+        
+        // 2. Cria o Blob a partir do Buffer
+        return new Blob([mockBuffer], { type: 'image/png' });
+    }
+    
+    // Se não for simulação, tenta o fetch (para URI real)
+    try {
+        const response = await fetch(uri);
+        return await response.blob();
+    } catch (error) {
+        // Agora, o erro não deve mais ser 'Failed to fetch' na URI de simulação.
+        throw new Error("Falha ao preparar o arquivo da rubrica para upload.");
+    }
+};
+
 export default function VerificationScreen({ route, navigation }) {
     
     const signerId = route.params?.signerId;
     const signatureUri = route.params?.signatureUri;
+    const otpData = route.params?.otpData; // Dados do OTP passados da SignatureScreen
+    
+    // O finalSignatureUri é a URI da rubrica/assinatura visual que vem da tela anterior
     const finalSignatureUri = signatureUri || null; 
     
     const [otpCode, setOtpCode] = useState(''); 
     
-    // Inicia os estados no modo 'vazio' para forçar a interação do usuário
     const [templateId, setTemplateId] = useState(''); 
     const [docTitle, setDocTitle] = useState(''); 
     const [docId, setDocId] = useState('');
-    const [uploadedDocumentUri, setUploadedDocumentUri] = useState(null); // URI do PDF real
+    const [uploadedDocumentUri, setUploadedDocumentUri] = useState(null); 
     
     const [isLoading, setIsLoading] = useState(false);
-    const [status, setStatus] = useState({ message: '', type: '' }); 
+    const [status, setStatus] = useState({ message: '', type: '', data: null }); 
 
     // Lógica para preencher Título e ID quando o Template é Selecionado
     useEffect(() => {
-        // Reseta a URI do documento sempre que o tipo de fluxo muda
         setUploadedDocumentUri(null); 
         
         if (templateId === 'template-servico') {
             setDocTitle('Contrato de Serviço Padrão (V1.0)'); 
-            setDocId('TPL-SERV-' + Date.now());
+            setDocId('TPL-SERV-' + Date.now().toString().slice(-10));
         } else if (templateId === 'upload') {
             setDocTitle('Clique em Buscar PDF...');
-            setDocId('USER-UP-' + Date.now());
+            setDocId('USER-UP-' + Date.now().toString().slice(-10));
         } else if (!templateId) {
             setDocTitle('');
             setDocId('');
@@ -76,12 +111,11 @@ export default function VerificationScreen({ route, navigation }) {
             });
 
             if (result.canceled === false) {
-                // Se o usuário selecionou, salva a URI
                 const selectedUri = result.assets[0].uri;
                 const selectedName = result.assets[0].name;
 
-                setUploadedDocumentUri(selectedUri); // Guarda o URI real do PDF
-                setDocTitle(selectedName); // Define o título com o nome do arquivo para UX
+                setUploadedDocumentUri(selectedUri);
+                setDocTitle(selectedName); 
                 setStatus({ message: `✅ Arquivo ${selectedName} carregado.`, type: 'success' });
             } else {
                 setStatus({ message: "Seleção de arquivo cancelada.", type: 'info' });
@@ -93,12 +127,10 @@ export default function VerificationScreen({ route, navigation }) {
     };
 
 
-    // FUNÇÃO PARA FINALIZAR ASSINATURA
+    // FUNÇÃO PARA FINALIZAR ASSINATURA (CORRIGIDA)
     const assinarDocumento = async () => {
-        const isTemplateFlow = templateId === 'template-servico'; 
         
-        // ⭐️ Determina o URI do documento principal a ser enviado (Template ou Upload)
-        let documentUriToSend = isTemplateFlow ? finalSignatureUri : uploadedDocumentUri;
+        const isTemplateFlow = templateId === 'template-servico'; 
         
         // 1. VALIDAÇÃO DE FLUXO DE UPLOAD (Se o usuário escolheu Upload, mas não buscou o PDF)
         if (templateId === 'upload' && !uploadedDocumentUri) {
@@ -119,35 +151,48 @@ export default function VerificationScreen({ route, navigation }) {
             const token = await AsyncStorage.getItem('jwtToken'); 
             const signerName = (await AsyncStorage.getItem('userEmail')) || SIGNER_NAME;
             
-            const formData = new FormData();
-            const fileType = 'image/png'; 
-            const fileName = docId + '_signature.png'; 
-
-            // ⭐️ O Documento principal a ser assinado (PDF)
-            // NOTA: Para o fluxo de TEMPLATE, enviamos apenas o URI da rubrica + metadados
-            // e o backend usa o PDF fixo (Contrato_Teste.pdf).
+            // 🚨 GARANTINDO O ID: Força o docId a ser string antes do envio
+            const finalDocIdToSend = String(docId || '').trim(); 
             
-            // Se fosse necessário enviar o PDF upload, o código seria diferente e a API teria que mudar:
-            // formData.append('documentFile', { uri: uploadedDocumentUri, type: 'application/pdf', name: 'document.pdf' });
+            if (finalDocIdToSend.length === 0) {
+                 throw new Error("ID do Documento ausente. Falha de estado.");
+            }
+            
+            // 1. Converte a URI da Rubrica em um Blob
+            const rubricaBlob = await uriToBlob(finalSignatureUri); 
+            
+            // 2. Converte o PDF do upload (se for o caso)
+            let documentBlob = null;
+            let documentFileName = '';
+            
+            if (templateId === 'upload' && uploadedDocumentUri) {
+                documentBlob = await uriToBlob(uploadedDocumentUri); 
+                documentFileName = docTitle;
+            }
+            
+            const formData = new FormData();
+            const signatureFileName = finalDocIdToSend + '_signature.png'; 
 
-            // 1. Adicionar os dados de texto/metadados
+            // 3. Adicionar os dados de texto/metadados
             formData.append('signerId', signerId);
             formData.append('submittedOTP', otpCode);
-            formData.append('documentId', docId);
-            formData.append('templateId', templateId); // Envia o tipo de fluxo
+            formData.append('documentId', finalDocIdToSend); // ✅ Enviado o valor STRING garantido
+            formData.append('templateId', templateId); 
             formData.append('signerName', signerName);
             formData.append('contractTitle', docTitle); 
-
-            // 2. Adicionar o arquivo binário da Rubrica
-            formData.append('signatureImage', {
-                uri: finalSignatureUri, 
-                type: fileType, 
-                name: fileName,    
-            });
             
+            // 4. Anexar o arquivo binário da Rubrica
+            formData.append('signatureImage', rubricaBlob, signatureFileName); 
+            
+            // 5. 🚨 NOVO: Anexar o Documento PDF para o fluxo 'upload'
+            if (documentBlob) {
+                formData.append('documentFile', documentBlob, documentFileName); 
+            }
+
+            // 🚨 CORREÇÃO DA URL: A URL deve ser /document/sign (SEM o ID na URL)
             const response = await fetch(`${API_BASE_URL}/document/sign`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, },
+                headers: { 'Authorization': `Bearer ${token}`, }, 
                 body: formData, 
             });
 
@@ -156,21 +201,27 @@ export default function VerificationScreen({ route, navigation }) {
             try { data = await response.json(); } catch (jsonError) { data = { message: `Erro HTTP ${response.status}. Servidor inacessível ou corpo inválido.` }; }
 
             if (response.ok) {
+                // Se o salvamento no DB foi um sucesso (200 OK)
                 setStatus({ message: "✅ Assinatura concluída. Navegando para Evidência.", type: 'success' });
-                navigation.navigate('Evidence', { documentId: docId }); 
+                // ✅ NAVEGAÇÃO FINAL: Leva para a tela de busca (que agora navegará para a tela de Detalhes)
+                navigation.navigate('Evidence', { documentId: finalDocIdToSend }); 
             } else {
                 setStatus({ message: `❌ Falha na Assinatura: ${data.message || data.error || 'Erro desconhecido.'}`, type: 'error' });
             }
 
         } catch (error) {
             console.error("Erro na requisição de assinatura:", error);
-            setStatus({ message: "Erro de Conexão ou Servidor. Tente novamente.", type: 'error' });
+            // Retorna a mensagem de erro detalhada, incluindo a falha de estado (ID nulo)
+            setStatus({ message: error.message || "Erro de Conexão ou Servidor. Tente novamente.", type: 'error' });
         } finally {
             setIsLoading(false);
         }
     };
 
 
+    // ----------------------------------------------------
+    // RENDERIZAÇÃO
+    // ----------------------------------------------------
     return (
         <SafeAreaView style={styles.safeContainer}>
             <ScrollView contentContainerStyle={styles.scrollContainer}>
@@ -221,7 +272,7 @@ export default function VerificationScreen({ route, navigation }) {
                     <Text style={styles.label}>Título do Contrato:</Text>
                     <TextInput 
                         style={[styles.input, !isDocumentSelected && styles.disabledInput]} 
-                        placeholder={isDocumentSelected ? "Digite o título do contrato" : "Selecione um documento"}
+                        placeholder={isDocumentSelected ? "Título do contrato" : "Selecione um documento"}
                         value={docTitle} 
                         onChangeText={setDocTitle} 
                         editable={isDocumentSelected} 
@@ -257,7 +308,7 @@ export default function VerificationScreen({ route, navigation }) {
                         <Button 
                             title="2. FINALIZAR ASSINATURA" 
                             onPress={assinarDocumento} 
-                            // Lógica Final: Requer Rubrica, OTP, Template/Upload, e Título
+                            // Lógica Final: Requer Rubrica, OTP, Template/Upload, e Título/ID
                             color={finalSignatureUri && finalSignatureUri !== 'AUSENTE_RUBRICA' && otpCode && templateId && docTitle ? "#28a745" : "#6c757d"} 
                             disabled={!finalSignatureUri || finalSignatureUri === 'AUSENTE_RUBRICA' || !otpCode || !templateId || !docTitle}
                         />
@@ -331,7 +382,6 @@ const styles = StyleSheet.create({
         width: '100%',
         marginTop: 10,
     },
-    // NOVO ESTILO: Para dar feedback visual de campo desabilitado
     disabledInput: {
         backgroundColor: '#f0f0f0',
         color: '#6c757d'
