@@ -40,7 +40,8 @@ app.get('/api/v1/document/:documentId/download', (req, res) => {
     const { documentId } = req.params;
     const templateFileName = 'Contrato_Teste.pdf'; 
     
-    const templatePath = path.join(__dirname, '..', 'templates', templateFileName);
+
+    const templatePath = path.join(__dirname, 'templates', templateFileName);
     console.log(`DEBUG: Tentando servir arquivo de: ${templatePath}`);
     
     try {
