@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE_URL = 'http://localhost:3000/api/v1';
+const API_BASE_URL = 'https://pure-waters-90275.herokuapp.com/api/v1';
 const { width } = Dimensions.get('window');
 
 // Componente para exibir mensagens de status

@@ -23,7 +23,7 @@ if (typeof global.Buffer === 'undefined') {
 }
 
 // 🚨 URL CORRIGIDA: Aponta para o Backend Local
-const API_BASE_URL = 'http://localhost:3000/api/v1'; 
+const API_BASE_URL = 'https://pure-waters-90275.herokuapp.com/api/v1';
 const SIGNER_NAME = 'Usuário de Teste'; 
 
 // Componente para exibir mensagens de status

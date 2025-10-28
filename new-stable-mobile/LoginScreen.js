@@ -13,7 +13,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome } from '@expo/vector-icons';
 
-const API_BASE_URL = 'http://localhost:3000/api/v1'
+const API_BASE_URL = 'https://pure-waters-90275.herokuapp.com/api/v1';
 
 export default function LoginScreen({ navigation }) {
     const [email, setEmail] = useState('');
