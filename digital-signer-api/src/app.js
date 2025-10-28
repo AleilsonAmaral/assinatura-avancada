@@ -86,3 +86,6 @@ pool.connect()
         console.error('❌ Erro fatal ao conectar com o PostgreSQL:', err.message);
         process.exit(1);
     });
+
+
+    // Fim do arquivo app.js
