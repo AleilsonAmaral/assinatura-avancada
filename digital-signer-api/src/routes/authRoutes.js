@@ -1,18 +1,27 @@
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcryptjs'); // ✅ Agora importado para ser usado
+const bcrypt = require('bcryptjs'); 
 const jwt = require('jsonwebtoken');
-const User = require('../models/User'); 
+const { pool } = require('../db');
 const authMiddleware = require('../middleware/authMiddleware'); 
+const otpService = require('../services/otpService');
+const MailgunService = require('../services/MailgunService'); 
+// ❌ REMOVIDO: const SmsService = require('../services/SmsService'); // Desnecessário, pois otpService o importa
 
-// ⭐️ DESCOMENTE SE FOR USAR ESSES SERVIÇOS
-// const otpService = require('../services/otpService');
-// const EmailService = require('../services/EmailService');
+// FUNÇÃO AUXILIAR: Gera um código OTP de 6 dígitos
+const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString(); 
 
+// FUNÇÃO AUXILIAR: Calcula o tempo de expiração (5 minutos)
+const getExpirationTime = () => {
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 5); 
+    return expiresAt;
+};
 
-// ROTA: POST /api/v1/auth/register
-// Nota: O hash da senha deve ser feito aqui ou em um pré-save hook no seu User model.
-// Assumimos que o hashing da senha já está ocorrendo no model.
+// ====================================================================
+// ROTA: POST /register 
+// ====================================================================
+
 router.post('/register', async (req, res) => {
     const { name, email, password } = req.body || {};
     
@@ -20,32 +29,42 @@ router.post('/register', async (req, res) => {
         return res.status(400).json({ message: 'Por favor, forneça nome, e-mail e senha.' });
     }
 
+    let client;
     try {
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
+        const checkUserQuery = 'SELECT * FROM users WHERE email = $1';
+        client = await pool.connect();
+        const existingUserResult = await client.query(checkUserQuery, [email]);
+        
+        if (existingUserResult.rows.length > 0) {
+            client.release();
             return res.status(409).json({ message: 'Este e-mail já está cadastrado.' });
         }
 
-        const newUser = new User({ name, email, password }); 
-        const savedUser = await newUser.save();
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
 
+        const insertUserQuery = 'INSERT INTO users (name, email, password, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW()) RETURNING id, name, email';
+        const savedUserResult = await client.query(insertUserQuery, [name, email, hashedPassword]);
+        const savedUser = savedUserResult.rows[0]; 
+
+        client.release();
+        
         res.status(201).json({
             message: 'Usuário registrado com sucesso!',
             user: {
-                id: savedUser._id,
+                id: savedUser.id,
                 name: savedUser.name,
                 email: savedUser.email,
             }
         });
 
     } catch (error) {
-        console.error('[ERRO NO REGISTRO]:', error);
+        if (client) client.release();
+        console.error('[ERRO NO REGISTRO - SQL]:', error);
         res.status(500).json({ message: 'Erro interno ao registrar o usuário.', error: error.message });
     }
 });
 
-
-// ROTA: POST /api/v1/auth/login
 
 router.post('/login', async (req, res) => {
     const { email, password, stayLoggedIn } = req.body || {};
@@ -54,26 +73,26 @@ router.post('/login', async (req, res) => {
         return res.status(400).json({ message: 'Por favor, forneça e-mail e senha.' });
     }
 
+    let client;
     try {
-        // Busca o usuário, incluindo o campo 'password' que é 'select: false' por padrão
-        const user = await User.findOne({ email }).select('+password'); 
+        const checkUserQuery = 'SELECT id, name, password FROM users WHERE email = $1';
+        client = await pool.connect();
+        const userResult = await client.query(checkUserQuery, [email]);
+        const user = userResult.rows[0];
 
         if (!user) {
+            client.release();
             return res.status(401).json({ message: 'Credenciais inválidas.' });
         }
 
-        // 🎯 CORREÇÃO DE SEGURANÇA: Verifica se a senha fornecida bate com o hash armazenado
         const isMatch = await bcrypt.compare(password, user.password); 
 
         if (!isMatch) {
-            // Se não bater, impede o login e retorna erro 401
+            client.release();
             return res.status(401).json({ message: 'Credenciais inválidas.' });
         }
         
-        // Se isMatch for true, o código prossegue daqui
-
-        // 2. DEFINIÇÃO DA EXPIRAÇÃO (JWT)
-        const payload = { id: user._id, name: user.name };
+        const payload = { id: user.id, name: user.name };
         let expiresInTime = '1h'; 
         if (stayLoggedIn) {
             expiresInTime = '30d'; 
@@ -85,42 +104,74 @@ router.post('/login', async (req, res) => {
             { expiresIn: expiresInTime } 
         );
 
+        client.release();
+        
         res.status(200).json({
             message: 'Login bem-sucedido!',
             token: token
         });
 
     } catch (error) {
-        console.error('[ERRO NO LOGIN]:', error);
-        // Em um ambiente real, você logaria erros de servidor, mas retornaria 401 para evitar vazamento de informação.
+        if (client) client.release();
+        console.error('[ERRO NO LOGIN - SQL]:', error);
         res.status(500).json({ message: 'Erro interno ao tentar fazer login.' });
     }
 });
 
-
-// ROTA: POST /api/v1/auth/request-otp 
+// ====================================================================
+// ROTA: POST /request-otp (FINAL)
+// ====================================================================
 
 router.post('/request-otp', async (req, res) => {
-    const { email } = req.body || {};
+    const { signerId, method, email } = req.body || {};
 
-    if (!email) {
-        return res.status(400).json({ message: 'E-mail é obrigatório para solicitar OTP.' });
+    if (!signerId || !method || !email) {
+        return res.status(400).json({ message: 'CPF, método e destinatário são obrigatórios para o OTP.' });
     }
 
+    let client;
     try {
-        // A lógica de envio continua aqui, assumindo que os requires de serviço estão descomentados/implementados
-        // ... (Seu código de serviço de OTP/E-mail)
+        // 1. GERAÇÃO E PERSISTÊNCIA
+        const otpCode = generateOTP(); 
+        const expiresAt = getExpirationTime();
 
-        res.status(200).json({ message: 'Código OTP enviado para o seu e-mail.' });
+        client = await pool.connect();
+        
+        const insertOtpQuery = `
+            INSERT INTO otps (signer_id, code, expires_at) 
+            VALUES ($1, $2, $3)
+            ON CONFLICT (signer_id) DO UPDATE 
+            SET code = $2, expires_at = $3, created_at = NOW();
+        `;
+        await client.query(insertOtpQuery, [signerId, otpCode, expiresAt]);
+        
+        // 2. ENVIO (Chamada Única ao Orquestrador)
+        // O otpService.sendToken agora trata todos os métodos
+        const messageResponse = await otpService.sendToken(method, email, otpCode);
+        
+        // 3. RESPOSTA DE SUCESSO 
+        return res.status(200).json({
+            message: messageResponse,
+        });
 
     } catch (error) {
-        console.error('[ERRO NO ENVIO DE OTP]:', error);
-        res.status(500).json({ message: 'Erro interno ao enviar o código OTP.', error: error.message });
+        // 🚨 CAPTURA O ERRO LANÇADO PELO Serviço de Envio (Mailgun ou Sinch)
+        console.error('[ERRO FATAL NA TRANSAÇÃO OTP]:', error);
+        
+        // Retorna a mensagem de erro detalhada do Serviço (error.message)
+        return res.status(500).json({ message: error.message || 'Falha interna ao processar a solicitação de OTP. Verifique o log do backend.' });
+        
+    } finally {
+        // ✅ SOLUÇÃO DO DOUBLE RELEASE: Libera a conexão UMA ÚNICA VEZ
+        if (client) {
+            client.release();
+        }
     }
 });
 
-
-// ROTA: GET /api/v1/auth/profile (ROTA PROTEGIDA)
+// ====================================================================
+// ROTA: GET /profile
+// ====================================================================
 
 router.get('/profile', authMiddleware, (req, res) => {
     res.status(200).json({

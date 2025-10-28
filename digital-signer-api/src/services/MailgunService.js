@@ -6,12 +6,13 @@ const Mailgun = require('mailgun.js');
 // 1. Inicializa o cliente Mailgun (Sintaxe corrigida)
 const mailgun = new Mailgun(FormData);
 
-// 2. Define o cliente com o endpoint V3 da API
 const mg = mailgun.client({
-    username: 'api', // Padrão de username do Mailgun
-    key: process.env.MAILGUN_API_KEY, // Usa a chave configurada no Heroku
-    // 🎯 CORREÇÃO DA URL: Forçamos o endpoint da API V3 padrão
-    url: 'https://api.mailgun.net/v3'
+    username: 'api',
+    key: process.env.MAILGUN_API_KEY,
+    // 🚨 MUDANÇA CRÍTICA AQUI: USANDO 'host' em vez de 'url' para mapeamento de região/domínio
+    host: 'api.mailgun.net',
+    // Removemos 'url' para simplificar, confiando no 'host'
+    // Tente adicionar 'public_api_key' se o host falhar
 });
 
 const MailgunService = {
@@ -24,8 +25,8 @@ const MailgunService = {
         }
 
         const messageData = {
-            // 🎯 Remetente: Usa o subdomínio 'postmaster' para envio, o que é o padrão
-            from: `Assinatura Digital <postmaster@${domain}>`,
+            // 💡 MUDANÇA AQUI: Trocando 'postmaster' por 'noreply'
+            from: `Assinatura Digital <noreply@${domain}>`,
             to: to,
             subject: subject,
             html: html,
@@ -37,12 +38,24 @@ const MailgunService = {
             console.log(`[LOG - MAILGUN] E-mail enviado com sucesso. ID: ${response.id}`);
             return response;
         } catch (error) {
-            // Captura erros de credencial ou conexão
-            console.error('[ERRO - MAILGUN SERVICE]: Falha no envio.', error.message);
-            // 🎯 Lança um erro limpo (erro de sintaxe 's' removido)
-            throw new Error(`Falha no envio de e-mail via Mailgun.`);
-        }
-    }
-};
 
-module.exports = MailgunService;
+            // 🚨 MUDANÇA CRÍTICA AQUI (Bloco de catch fornecido por você)
+            let errorDetail = 'Erro desconhecido do Mailgun.';
+            if (error.response && error.response.data) {
+                // Tenta logar a mensagem de erro específica da API (ex: "Forbidden", "Domain is not enabled")
+                errorDetail = `Status: ${error.status || 'N/A'} | API Message: ${JSON.stringify(error.response.data)}`;
+            } else {
+                // Captura erro de rede ou falha de biblioteca
+                errorDetail = error.message;
+            }
+
+            console.error('[ERRO FATAL MAILGUN SERVICE]: Falha no envio. Detalhes:', errorDetail);
+
+            throw new Error(`Falha no envio de e-mail via Mailgun. Verifique o log do backend.`);
+        }
+    } // <--- FECHA O MÉTODO sendEmail
+}; // <--- FECHA O OBJETO MailgunService
+
+module.exports = MailgunService; // <--- EXPORTAÇÃO CORRETA
+
+//module.exports = MailgunService;
