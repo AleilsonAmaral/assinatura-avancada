@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node ./src/app.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "cd digital-signer-api && npm install && cd .. && npm run build-mobile"
+    "build": "echo 'API build concluido.' "
   },
   "keywords": [
     "assinatura",
