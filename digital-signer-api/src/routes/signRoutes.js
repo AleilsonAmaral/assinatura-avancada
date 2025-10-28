@@ -20,7 +20,7 @@ const otpService = require('../services/otpService');
 // 🚨 SERVIÇOS DE NOTIFICAÇÃO E BUSCA DE DADOS (CRÍTICOS)
 const EmailService = require('../services/EmailService');
 const UserService = require('../services/UserService'); 
-const DocumentService = require('../services/DocumentService'); 
+const documentService = require('../services/documentService'); 
 
 
 // 1. CONFIGURAÇÃO DO MULTER COM memoryStorage
@@ -204,7 +204,7 @@ router.post('/document/sign', authMiddleware, uploadMiddleware, async (req, res)
         // 🚨 5. AÇÃO CRÍTICA: ENVIO DE NOTIFICAÇÃO DE SEGURANÇA
         try {
             const signatarioDados = await UserService.getSignerDataByCpf(signerId); 
-            const remetenteEmail = await DocumentService.getSenderEmailByDocumentId(finalDocumentId); 
+            const remetenteEmail = await documentService.getSenderEmailByDocumentId(finalDocumentId); 
             
             const emailUsuarioLogado = req.user && req.user.email ? req.user.email : null;
             
