@@ -12,4 +12,4 @@
 /AppDeAssinatura/
 /MeuAppDeAssinatura/
 .expo/
-.vscode/
+.vscode/node_modules
