@@ -35,19 +35,22 @@ const uploadMiddleware = upload.fields([
     { name: 'documentFile', maxCount: 1 }, 
     { name: 'signatureImage', maxCount: 1 } 
 ]);
+// O arquivo está em: digital-signer-api/src/templates/
+// O código está em: digital-signer-api/src/routes/
+// A URL correta é sair de 'routes' e entrar em 'templates'
 
-// 2. PRÉ-CARREGAMENTO DO TEMPLATE
 const TEMPLATE_FILENAME = 'Contrato_Teste.pdf';
 let CONTRATO_TEMPLATE_BUFFER = null;
 
 try {
-    const templatePath = path.join(__dirname, '..', '..', 'templates', TEMPLATE_FILENAME);
+    // CORRIGIDO: Sobe um nível (para src/) e depois desce para 'templates'
+    const templatePath = path.join(__dirname, '..', 'templates', TEMPLATE_FILENAME); 
+    
     CONTRATO_TEMPLATE_BUFFER = fs.readFileSync(templatePath);
     console.log(`Template ${TEMPLATE_FILENAME} pré-carregado com sucesso.`);
 } catch (e) {
     console.error(`[ERRO CRÍTICO ENOENT]: Não foi possível carregar o template.`, e.message);
 }
-
 
 // ROTA 1: GERAR E ENVIAR O TOKEN OTP 
 // ✅ ROTA 1 USA O MIDDLEWARE
