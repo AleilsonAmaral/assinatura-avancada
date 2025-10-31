@@ -31,7 +31,7 @@ router.post('/register', async (req, res) => {
     let client;
     try {
         // CORREÇÃO: Tabela 'usuários'
-        const checkUserQuery = 'SELECT * FROM usuários WHERE email = $1'; 
+        const checkUserQuery = 'SELECT * FROM users WHERE email = $1'; 
         client = await pool.connect();
         const existingUserResult = await client.query(checkUserQuery, [email]);
         
@@ -44,7 +44,7 @@ router.post('/register', async (req, res) => {
         const hashedPassword = await bcrypt.hash(senha, salt);
 
         // CORREÇÃO: Colunas e Tabela ajustadas para (nome, email, senha) e 'usuários'
-        const insertUserQuery = 'INSERT INTO usuários (nome, email, senha, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW()) RETURNING id, nome, email';
+        const insertUserQuery = 'INSERT INTO users (nome, email, senha, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW()) RETURNING id, nome, email';
         const savedUserResult = await client.query(insertUserQuery, [nome, email, hashedPassword]);
         const savedUser = savedUserResult.rows[0]; 
 
@@ -78,7 +78,7 @@ router.post('/login', async (req, res) => {
     let client;
     try {
         // CORREÇÃO: SELECT na tabela 'usuários' e colunas 'nome', 'senha'
-        const checkUserQuery = 'SELECT id, nome, senha FROM usuários WHERE email = $1'; 
+        const checkUserQuery = 'SELECT id, nome, senha FROM users WHERE email = $1'; 
         client = await pool.connect();
         const userResult = await client.query(checkUserQuery, [email]);
         const user = userResult.rows[0];
