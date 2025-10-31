@@ -31,16 +31,16 @@ const Message = ({ message, type }) => {
 
 
 export default function RegisterScreen({ navigation }) {
-    const [nome, setNome] = useState('');
+    const [name, setName] = useState('');
     const [email, setEmail] = useState('');
-    const [senha, setSenha] = useState('');
+    const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState({ message: '', type: '' });
 
     // ⭐️ FUNÇÃO DE CRIAÇÃO DE CONTA 
     const handleRegister = async () => {
         // Validação de campos obrigatórios no frontend
-        if (!nome || !email || !senha) {
+        if (!name || !email || !password) {
             setStatus({ message: "Todos os campos são obrigatórios.", type: 'error' });
             return;
         }
@@ -53,7 +53,7 @@ export default function RegisterScreen({ navigation }) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 // ✅ ENVIA AS CHAVES EM PORTUGUÊS (nome, email, senha) - Alinhado ao backend corrigido
-                body: JSON.stringify({ nome, email, senha }), 
+                body: JSON.stringify({ name, email, password }), 
             });
 
             const data = await response.json();
