@@ -200,8 +200,8 @@ router.post('/request-otp', async (req, res) => {
             INSERT INTO otps (signer_id, code, expires_at) 
             VALUES ($1, $2, $3)
             ON CONFLICT (signer_id) DO UPDATE 
-            SET code = $2, expires_at = $3, created_at = NOW();
-        `;
+            SET code = $2, expires_at = $3`; //created_at = NOW();
+        
         await client.query(insertOtpQuery, [signerId, otpCode, expiresAt]);
         
         // 2. ENVIO (Chamada Única ao Orquestrador)
