@@ -88,8 +88,8 @@ export default function RegisterScreen({ navigation }) {
                     <TextInput
                         style={styles.input}
                         placeholder="Seu Nome"
-                        value={nome}
-                        onChangeText={setNome}
+                        value={name}
+                        onChangeText={setName}
                         autoCapitalize="words"
                     />
 
@@ -109,8 +109,8 @@ export default function RegisterScreen({ navigation }) {
                     <TextInput
                         style={styles.input}
                         placeholder="Sua senha segura"
-                        value={senha}
-                        onChangeText={setSenha}
+                        value={password}
+                        onChangeText={setPassword}
                         secureTextEntry={true}
                     />
 

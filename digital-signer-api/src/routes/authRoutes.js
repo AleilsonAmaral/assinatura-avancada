@@ -39,7 +39,7 @@ router.post('/register', async (req, res) => {
         // 🎯 CORREÇÃO 2: Colunas de INSERT ajustadas para 'name' e 'password'
         const insertUserQuery = 'INSERT INTO users (name, email, password, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW()) RETURNING id, name, email';
         // VALORES PASSADOS: [nome, email, hashedPassword]
-        const savedUserResult = await client.query(insertUserQuery, [nome, email, hashedPassword]);
+        const savedUserResult = await client.query(insertUserQuery, [name, email, hashedPassword]);
         const savedUser = savedUserResult.rows[0]; 
 
         client.release();
@@ -49,7 +49,7 @@ router.post('/register', async (req, res) => {
             user: {
                 id: savedUser.id,
                 // ✅ RETORNO ALINHADO AO BD: Retorna 'name' (do BD)
-                nome: savedUser.name, 
+                name: savedUser.name, 
                 email: savedUser.email,
             }
         });
@@ -64,9 +64,9 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
     // ✅ LEITURA DO FRONT-END EM PORTUGUÊS
-    const { email, senha, stayLoggedIn } = req.body || {}; 
+    const { email, password, stayLoggedIn } = req.body || {}; 
 
-    if (!email || !senha) {
+    if (!email || !password) {
         return res.status(400).json({ message: 'Por favor, forneça e-mail e senha.' });
     }
 
@@ -84,7 +84,7 @@ router.post('/login', async (req, res) => {
         }
 
         // ✅ CORREÇÃO 4: Compara senha do body (senha) com senha do BD (user.password)
-        const isMatch = await bcrypt.compare(senha, user.password); 
+        const isMatch = await bcrypt.compare(password, user.password); 
 
         if (!isMatch) {
             client.release();
@@ -123,16 +123,16 @@ router.post('/login', async (req, res) => {
 
 router.post('/login', async (req, res) => {
     // CORREÇÃO: Desestruturação alinhada ao Português
-    const { email, senha, stayLoggedIn } = req.body || {}; 
+    const { email, password, stayLoggedIn } = req.body || {}; 
 
-    if (!email || !senha) {
+    if (!email || !password) {
         return res.status(400).json({ message: 'Por favor, forneça e-mail e senha.' });
     }
 
     let client;
     try {
         // CORREÇÃO: SELECT na tabela 'usuários' e colunas 'nome', 'senha'
-        const checkUserQuery = 'SELECT id, nome, senha FROM users WHERE email = $1'; 
+        const checkUserQuery = 'SELECT id, name, password FROM users WHERE email = $1'; 
         client = await pool.connect();
         const userResult = await client.query(checkUserQuery, [email]);
         const user = userResult.rows[0];
@@ -143,7 +143,7 @@ router.post('/login', async (req, res) => {
         }
 
         // CORREÇÃO: Compara senha do body (senha) com hash do BD (user.senha)
-        const isMatch = await bcrypt.compare(senha, user.senha); 
+        const isMatch = await bcrypt.compare(password, user.password); 
 
         if (!isMatch) {
             client.release();
@@ -151,7 +151,7 @@ router.post('/login', async (req, res) => {
         }
 
         // CORREÇÃO: Payload do JWT usa 'nome'
-        const payload = { id: user.id, nome: user.nome };
+        const payload = { id: user.id, name: user.name };
         let expiresInTime = '1h';
         if (stayLoggedIn) {
             expiresInTime = '30d'; 
