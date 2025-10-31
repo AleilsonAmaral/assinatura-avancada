@@ -14,7 +14,8 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE_URL = 'https://pure-waters-90275.herokuapp.com/api/v1';
+const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1';
+
 const { width } = Dimensions.get('window');
 
 // Componente para exibir mensagens de status
@@ -30,15 +31,16 @@ const Message = ({ message, type }) => {
 
 
 export default function RegisterScreen({ navigation }) {
-    const [name, setName] = useState('');
+    const [nome, setNome] = useState('');
     const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
+    const [senha, setSenha] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState({ message: '', type: '' });
 
     // ⭐️ FUNÇÃO DE CRIAÇÃO DE CONTA 
     const handleRegister = async () => {
-        if (!name || !email || !password) {
+        // Validação de campos obrigatórios no frontend
+        if (!nome || !email || !senha) {
             setStatus({ message: "Todos os campos são obrigatórios.", type: 'error' });
             return;
         }
@@ -50,16 +52,18 @@ export default function RegisterScreen({ navigation }) {
             const response = await fetch(`${API_BASE_URL}/auth/register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, email, password }),
+                // ✅ ENVIA AS CHAVES EM PORTUGUÊS (nome, email, senha) - Alinhado ao backend corrigido
+                body: JSON.stringify({ nome, email, senha }), 
             });
 
             const data = await response.json();
 
             if (response.ok) {
-                // 💡 SUCCESSO: Navega de volta para a tela de Login
+                // 💡 SUCESSO: Navega de volta para a tela de Login
                 Alert.alert("Sucesso", "Conta criada! Faça login agora.");
                 navigation.navigate('Login');
             } else {
+                // Trata erros de validação (ex: email já cadastrado)
                 setStatus({ message: `❌ Erro: ${data.message || 'Falha no registro.'}`, type: 'error' });
             }
 
@@ -84,8 +88,8 @@ export default function RegisterScreen({ navigation }) {
                     <TextInput
                         style={styles.input}
                         placeholder="Seu Nome"
-                        value={name}
-                        onChangeText={setName}
+                        value={nome}
+                        onChangeText={setNome}
                         autoCapitalize="words"
                     />
 
@@ -105,15 +109,14 @@ export default function RegisterScreen({ navigation }) {
                     <TextInput
                         style={styles.input}
                         placeholder="Sua senha segura"
-                        value={password}
-                        onChangeText={setPassword}
+                        value={senha}
+                        onChangeText={setSenha}
                         secureTextEntry={true}
                     />
 
                     <Message message={status.message} type={status.type} />
 
                     <View style={styles.buttonContainer}>
-                        {/* 🎯 CORREÇÃO: COMPACTANDO O BLOCO TERNÁRIO */}
                         {isLoading ? (
                             <ActivityIndicator size="large" color="#007BFF" />
                         ) : (

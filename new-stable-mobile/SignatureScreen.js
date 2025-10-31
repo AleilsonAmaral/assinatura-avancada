@@ -13,7 +13,7 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE_URL = 'https://pure-waters-90275.herokuapp.com/api/v1';
+const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1';
 const SIGNER_NAME = 'Usuário de Teste';
 
 // Componente para exibir mensagens de status

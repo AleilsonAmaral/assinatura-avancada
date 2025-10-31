@@ -13,7 +13,8 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome } from '@expo/vector-icons';
 
-const API_BASE_URL = 'https://pure-waters-90275.herokuapp.com/api/v1';
+const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1';
+
 
 export default function LoginScreen({ navigation }) {
     const [email, setEmail] = useState('');
@@ -69,7 +70,7 @@ export default function LoginScreen({ navigation }) {
             }
         } catch (error) {
             console.error("Erro de Rede:", error);
-            setStatusMessage("Erro de Conexão. Não foi possível conectar ao Render.");
+            setStatusMessage("Falha de Conexão. O domínio da API está inacessível ou sendo bloqueado pela rede.");
         } finally {
             setIsLoading(false);
         }
