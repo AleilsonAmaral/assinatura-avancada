@@ -4,7 +4,7 @@
   "description": "API de Assinatura Digital Avançada (Upload, Hash, OTP)",
   "main": "src/app.js",
   "scripts": {
-    "start": "node ./src/app.js",
+    "start": "sh -c 'sleep 12 && node src/app.js'",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "echo 'API build concluido.' "
   },
