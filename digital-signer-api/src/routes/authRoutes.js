@@ -34,7 +34,7 @@ router.post('/register', async (req, res) => {
         }
 
         const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(senha, salt);
+        const hashedPassword = await bcrypt.hash(password, salt);
 
         // 🎯 CORREÇÃO 2: Colunas de INSERT ajustadas para 'name' e 'password'
         const insertUserQuery = 'INSERT INTO users (name, email, password, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW()) RETURNING id, name, email';
