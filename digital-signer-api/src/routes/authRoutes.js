@@ -14,7 +14,7 @@ const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString()
 // 🎯 Adicionado: FUNÇÃO AUXILIAR: Calcula o tempo de expiração (5 minutos)
 const getExpirationTime = () => {
     const expiresAt = new Date();
-    expiresAt.setMinutes(expiresAt.getMinutes() + 5); 
+    expiresAt.setMinutes(expiresAt.getMinutes() + 6); 
     return expiresAt;
 };
 
