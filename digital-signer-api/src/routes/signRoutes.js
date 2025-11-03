@@ -156,7 +156,7 @@ router.post('/document/sign', authMiddleware, uploadMiddleware, async (req, res)
             SELECT signer_id FROM otps 
             WHERE signer_id = $1 
               AND code = $2 
-              AND expires_at > NOW();
+              AND expires_at >= NOW();
         `;
         
         const validationResult = await client.query(validationQuery, [signerId, submittedOTP]);
