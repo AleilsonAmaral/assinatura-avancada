@@ -1,4 +1,4 @@
-const path = require('path'); 
+const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '..', '..', '.env') });
 
 
@@ -6,10 +6,10 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 
-const { pool } = require('./db'); 
+const { pool } = require('./db');
 
 
-const signRoutes = require('./routes/signRoutes'); 
+const signRoutes = require('./routes/signRoutes');
 const authRoutes = require('./routes/authRoutes');
 
 const app = express();
@@ -17,16 +17,20 @@ const PORT = process.env.PORT || 3000;
 
 
 app.use(cors({
-    origin: '*', 
+    origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+// ✅ CORREÇÃO: Tratamento explícito para OPTIONS (CORS)
+app.options('/', cors());
 
-app.use(express.json()); 
-app.use(express.urlencoded({ extended: true })); 
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 
+// 1. ROTA DE HEALTH CHECK (Corrigido o erro de duplicação)
 app.get('/', (req, res) => {
     res.status(200).send({
         service: 'Assinatura API',
@@ -36,23 +40,23 @@ app.get('/', (req, res) => {
 });
 
 
+// 2. ROTA DE DOWNLOAD DE DOCUMENTOS
 app.get('/api/v1/document/:documentId/download', (req, res) => {
     const { documentId } = req.params;
-    const templateFileName = 'Contrato_Teste.pdf'; 
-    
+    const templateFileName = 'Contrato_Teste.pdf';
 
     const templatePath = path.join(__dirname, 'templates', templateFileName);
     console.log(`DEBUG: Tentando servir arquivo de: ${templatePath}`);
-    
+
     try {
         if (!fs.existsSync(templatePath)) {
             console.error(`[DOWNLOAD FAIL] PDF not found at: ${templatePath}`);
             return res.status(404).send({ error: "Documento não encontrado no servidor. Falha de caminho." });
         }
-        
+
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="${documentId}.pdf"`);
-        
+
         fs.createReadStream(templatePath).pipe(res);
 
     } catch (e) {
@@ -62,17 +66,18 @@ app.get('/api/v1/document/:documentId/download', (req, res) => {
 });
 
 
+// 3. MONTAGEM DOS ROTAS
 app.use('/api/v1', signRoutes);
-app.use('/api/v1/auth', authRoutes); 
+app.use('/api/v1/auth', authRoutes);
 
 
-module.exports = app; 
+module.exports = app;
 
 
 pool.connect()
     .then(client => {
         console.log('✅ PostgreSQL conectado com sucesso!');
-        client.release(); 
+        client.release();
 
         if (!module.parent) {
             app.listen(PORT, () => {
@@ -87,5 +92,4 @@ pool.connect()
         process.exit(1);
     });
 
-
-    // Fim do arquivo app.js
+// Fim do arquivo app.js
