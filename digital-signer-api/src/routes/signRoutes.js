@@ -176,7 +176,7 @@ router.post('/document/sign', authMiddleware, uploadMiddleware, async (req, res)
         const signatureValue = cryptoService.signData(dataToSign);
 
         // 3. EXCLUIR O OTP (Garante uso único)
-        await client.query('DELETE FROM otps WHERE signer_id = $1', [signerId]);
+       await client.query('UPDATE otps SET used_at = NOW() WHERE signer_id = $1', [signerId]);
         
         // 4. PERSISTÊNCIA NO BANCO DE DADOS
         const signatureRecord = {
@@ -196,7 +196,7 @@ router.post('/document/sign', authMiddleware, uploadMiddleware, async (req, res)
                 authMethod: 'OTP', 
                 visualRubric: visualRubricData 
             },
-            signedAt: new Date().toISOString()
+            signedAt: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
         };
         
         // Salva no DB e recupera o ID gerado ou usa o documentId como fallback
