@@ -123,7 +123,7 @@ router.post('/login', async (req, res) => {
 // ... (Restante do código: /request-otp, /profile, etc.) ...
 
 
-router.post('/login', async (req, res) => {
+/*router.post('/login', async (req, res) => {
     // CORREÇÃO: Desestruturação alinhada ao Português
     const { email, password, stayLoggedIn } = req.body || {}; 
 
@@ -177,7 +177,7 @@ router.post('/login', async (req, res) => {
         console.error('[ERRO NO LOGIN - SQL]:', error);
         res.status(500).json({ message: 'Erro interno ao tentar fazer login.' });
     }
-});
+});*/
 
 // ====================================================================
 // ROTA: POST /request-otp 
