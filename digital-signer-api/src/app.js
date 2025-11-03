@@ -23,7 +23,7 @@ app.use(cors({
 }));
 
 // ✅ CORREÇÃO: Tratamento explícito para OPTIONS (CORS)
-app.options('/', cors());
+app.options(/.*/, cors());
 
 
 app.use(express.json());
