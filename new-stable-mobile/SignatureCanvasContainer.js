@@ -3,7 +3,7 @@
 import React, { useRef } from 'react';
 import { StyleSheet, View, Alert, Button } from 'react-native';
 import * as FileSystem from 'expo-file-system';
-import SignatureCanvas from 'react-native-signature-canvas'; // A importação nativa problemática
+import SignatureCanvas from 'react-native-signature-canvas'; 
 
 
 // ⭐️ FUNÇÃO CRÍTICA: Salva o Base64 da Assinatura em uma URI local
@@ -17,6 +17,7 @@ const saveBase64AsFile = async (base64Data, signerId, setRubricaUri) => {
             encoding: FileSystem.EncodingType.Base64,
         });
         
+        // 🎯 O ESTADO É ATUALIZADO AQUI
         setRubricaUri(fileUri);
         Alert.alert("Sucesso", "Assinatura capturada e salva.");
         
@@ -29,6 +30,7 @@ const saveBase64AsFile = async (base64Data, signerId, setRubricaUri) => {
 const SignatureCanvasContainer = ({ signerId, setRubricaUri, rubricaUri }) => {
     const signatureRef = useRef(null);
     
+    // Disparado pelo onOK após o readSignature()
     const handleSignature = (signatureBase64) => {
         if (signatureBase64) {
             saveBase64AsFile(signatureBase64, signerId, setRubricaUri);
@@ -37,7 +39,14 @@ const SignatureCanvasContainer = ({ signerId, setRubricaUri, rubricaUri }) => {
         }
     };
 
+    // Chamado pelo botão '1. Salvar Rubrica'
     const handleExportSignature = () => {
+        if (rubricaUri !== null) {
+            // Se já está salvo, avise o usuário
+            Alert.alert("Atenção", "A rubrica já está salva. Limpe para refazer.");
+            return;
+        }
+
         if (signatureRef.current) {
             signatureRef.current.readSignature(); 
         }
@@ -57,22 +66,26 @@ const SignatureCanvasContainer = ({ signerId, setRubricaUri, rubricaUri }) => {
                 />
             </View>
             
+            {/* Botão de Limpar */}
             <Button 
                 title="Limpar Assinatura" 
                 onPress={() => {
                     if (signatureRef.current) signatureRef.current.clearSignature();
-                    setRubricaUri(null); 
+                    setRubricaUri(null); // Define o URI como NULL: Reabilita o botão 'Salvar Rubrica'
                 }} 
                 color="#dc3545" 
+                // 🚨 MELHORIA UX: Desabilita se não houver nada para limpar
+                disabled={rubricaUri === null} 
             />
             
+            {/* Botão Salvar Rubrica */}
             <View style={{ marginTop: 15 }}>
                 <Button 
                     title="1. Salvar Rubrica" 
                     onPress={handleExportSignature}
                     color="#007BFF" 
-                    // 🚨 ALTERAÇÃO: Removida a propriedade 'disabled' para garantir o clique
-                    // O controle de estado de 'rubricaUri' será feito no componente pai.
+                    // Se rubricaUri tiver valor, o botão de salvar fica desabilitado
+                    disabled={rubricaUri !== null} 
                 />
             </View>
         </>
