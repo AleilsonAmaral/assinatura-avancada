@@ -71,7 +71,8 @@ const SignatureCanvasContainer = ({ signerId, setRubricaUri, rubricaUri }) => {
                     title="1. Salvar Rubrica" 
                     onPress={handleExportSignature}
                     color="#007BFF" 
-                    disabled={rubricaUri !== null}
+                    // 🚨 ALTERAÇÃO: Removida a propriedade 'disabled' para garantir o clique
+                    // O controle de estado de 'rubricaUri' será feito no componente pai.
                 />
             </View>
         </>
