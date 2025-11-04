@@ -17,7 +17,7 @@ const saveBase64AsFile = async (base64Data, signerId, setRubricaUri) => {
             encoding: FileSystem.EncodingType.Base64,
         });
         
-        // 🎯 O ESTADO É ATUALIZADO AQUI
+        // 🎯 O ESTADO É ATUALIZADO AQUI: Habilita o botão '2. AVANÇAR...' no componente pai
         setRubricaUri(fileUri);
         Alert.alert("Sucesso", "Assinatura capturada e salva.");
         
@@ -41,13 +41,14 @@ const SignatureCanvasContainer = ({ signerId, setRubricaUri, rubricaUri }) => {
 
     // Chamado pelo botão '1. Salvar Rubrica'
     const handleExportSignature = () => {
+        // Se já está salvo, impede um novo salvamento
         if (rubricaUri !== null) {
-            // Se já está salvo, avise o usuário
             Alert.alert("Atenção", "A rubrica já está salva. Limpe para refazer.");
             return;
         }
 
         if (signatureRef.current) {
+            // Este método força a exportação, que dispara onOK -> handleSignature
             signatureRef.current.readSignature(); 
         }
     };
@@ -71,10 +72,10 @@ const SignatureCanvasContainer = ({ signerId, setRubricaUri, rubricaUri }) => {
                 title="Limpar Assinatura" 
                 onPress={() => {
                     if (signatureRef.current) signatureRef.current.clearSignature();
-                    setRubricaUri(null); // Define o URI como NULL: Reabilita o botão 'Salvar Rubrica'
+                    setRubricaUri(null); // Define o URI como NULL: Reabilita o botão 'Salvar Rubrica' e desabilita o botão 'Limpar'
                 }} 
                 color="#dc3545" 
-                // 🚨 MELHORIA UX: Desabilita se não houver nada para limpar
+                // 🚨 Habilita Limpar apenas se houver algo salvo
                 disabled={rubricaUri === null} 
             />
             
@@ -84,7 +85,7 @@ const SignatureCanvasContainer = ({ signerId, setRubricaUri, rubricaUri }) => {
                     title="1. Salvar Rubrica" 
                     onPress={handleExportSignature}
                     color="#007BFF" 
-                    // Se rubricaUri tiver valor, o botão de salvar fica desabilitado
+                    // 🚨 Desabilita se já estiver salvo
                     disabled={rubricaUri !== null} 
                 />
             </View>
