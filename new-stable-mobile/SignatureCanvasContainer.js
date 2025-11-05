@@ -1,23 +1,28 @@
-// Arquivo: SignatureCanvasContainer.js
+// Arquivo: SignatureCanvasContainer.js (USANDO RNSketchCanvas)
 
 import React, { useRef } from 'react';
 import { StyleSheet, View, Alert, Button } from 'react-native';
 import * as FileSystem from 'expo-file-system';
-import SignatureCanvas from 'react-native-signature-canvas'; 
+// 🚨 NOVO COMPONENTE
+import RNSketchCanvas from '@terrylinla/react-native-sketch-canvas'; 
 
-
-// ⭐️ FUNÇÃO CRÍTICA: Salva o Base64 da Assinatura em uma URI local
+// ⭐️ FUNÇÃO DE SALVAMENTO: MOVIDA PARA DENTRO do componente (Pode ser movida para o RubricaScreen, se preferir)
 const saveBase64AsFile = async (base64Data, signerId, setRubricaUri) => {
-    const base64 = base64Data.replace('data:image/png;base64,', '');
+    
+    // **NOTA:** O RNSketchCanvas com o parâmetro 'true' na exportação JÁ retorna a Base64 PURA.
+    // Se o seu RNSketchCanvas estiver configurado corretamente, a linha de substituição abaixo
+    // não será estritamente necessária, mas é mantida por segurança (Opção A da nossa análise).
+    const base64Clean = base64Data.includes('data:') ? base64Data.split(',')[1] : base64Data;
+    
     const fileName = `rubrica_${signerId}_${Date.now()}.png`;
     const fileUri = FileSystem.cacheDirectory + fileName; 
 
     try {
-        await FileSystem.writeAsStringAsync(fileUri, base64, {
+        await FileSystem.writeAsStringAsync(fileUri, base64Clean, {
             encoding: FileSystem.EncodingType.Base64,
         });
         
-        // 🎯 O ESTADO É ATUALIZADO AQUI: Habilita o botão '2. AVANÇAR...' no componente pai
+        // 🎯 O ESTADO É ATUALIZADO AQUI
         setRubricaUri(fileUri);
         Alert.alert("Sucesso", "Assinatura capturada e salva.");
         
@@ -28,17 +33,9 @@ const saveBase64AsFile = async (base64Data, signerId, setRubricaUri) => {
 };
 
 const SignatureCanvasContainer = ({ signerId, setRubricaUri, rubricaUri }) => {
-    const signatureRef = useRef(null);
+    // 🚨 REFERÊNCIA PARA O NOVO CANVAS
+    const sketchRef = useRef(null);
     
-    // Disparado pelo onOK após o readSignature()
-    const handleSignature = (signatureBase64) => {
-        if (signatureBase64) {
-            saveBase64AsFile(signatureBase64, signerId, setRubricaUri);
-        } else {
-            Alert.alert("Atenção", "Nenhuma assinatura detectada.");
-        }
-    };
-
     // Chamado pelo botão '1. Salvar Rubrica'
     const handleExportSignature = () => {
         // Se já está salvo, impede um novo salvamento
@@ -47,23 +44,41 @@ const SignatureCanvasContainer = ({ signerId, setRubricaUri, rubricaUri }) => {
             return;
         }
 
-        if (signatureRef.current) {
-            // Este método força a exportação, que dispara onOK -> handleSignature
-            signatureRef.current.readSignature(); 
+        if (sketchRef.current) {
+            // 🚨 NOVO MÉTODO: getBase64() do RNSketchCanvas
+            // Parâmetros: 'png', transparência (false), somente Base64 pura (true), callback
+            sketchRef.current.getBase64('png', false, true, (error, base64StringPura) => {
+                if (error) {
+                    Alert.alert("Erro", "Falha ao gerar a Base64 da assinatura.");
+                    return;
+                }
+                
+                if (base64StringPura) {
+                    // 🎯 CHAMA A FUNÇÃO DE SALVAMENTO COM A BASE64 PURA
+                    saveBase64AsFile(base64StringPura, signerId, setRubricaUri);
+                } else {
+                    Alert.alert("Atenção", "Nenhuma assinatura detectada.");
+                }
+            });
+            
+        } else {
+            Alert.alert("Erro", "O Canvas de assinatura não foi inicializado.");
         }
     };
     
-    const styleCanvas = `.m-signature-pad--body { border: 1px solid #ccc; } .m-signature-pad--footer { display: none; }`;
+    // Não precisamos de styleCanvas web, pois o RNSketchCanvas não é usado no Web
+    // A lógica de Web deve estar no RubricaScreen (que é o que você tinha).
 
     return (
         <>
             <View style={styles.canvasContainer}>
-                <SignatureCanvas
-                    ref={signatureRef}
-                    webStyle={styleCanvas}
-                    onOK={handleSignature} 
-                    onEmpty={() => Alert.alert("Atenção", "Assinatura em branco.")}
-                    dataURL={'data:image/png;base64,'}
+                {/* 🚨 COMPONENTE NOVO */}
+                <RNSketchCanvas
+                    ref={sketchRef}
+                    strokeColor={'black'} // Cor da caneta
+                    strokeWidth={5} // Largura da caneta
+                    containerStyle={{ flex: 1 }} // Ocupa o container
+                    // Não precisa de onOK ou onEmpty, pois usamos o getBase64() no botão.
                 />
             </View>
             
@@ -71,11 +86,10 @@ const SignatureCanvasContainer = ({ signerId, setRubricaUri, rubricaUri }) => {
             <Button 
                 title="Limpar Assinatura" 
                 onPress={() => {
-                    if (signatureRef.current) signatureRef.current.clearSignature();
-                    setRubricaUri(null); // Define o URI como NULL: Reabilita o botão 'Salvar Rubrica' e desabilita o botão 'Limpar'
+                    if (sketchRef.current) sketchRef.current.clear(); // 🚨 NOVO MÉTODO DE LIMPEZA
+                    setRubricaUri(null); // Define o URI como NULL
                 }} 
                 color="#dc3545" 
-                // 🚨 Habilita Limpar apenas se houver algo salvo
                 disabled={rubricaUri === null} 
             />
             
@@ -83,9 +97,8 @@ const SignatureCanvasContainer = ({ signerId, setRubricaUri, rubricaUri }) => {
             <View style={{ marginTop: 15 }}>
                 <Button 
                     title="1. Salvar Rubrica" 
-                    onPress={handleExportSignature}
+                    onPress={handleExportSignature} // Chama a nova lógica de exportação
                     color="#007BFF" 
-                    // 🚨 Desabilita se já estiver salvo
                     disabled={rubricaUri !== null} 
                 />
             </View>
@@ -100,6 +113,8 @@ const styles = StyleSheet.create({
         marginBottom: 10,
         borderWidth: 1,
         borderColor: '#ccc',
+        // Adicionando flex para garantir que o RNSketchCanvas ocupe o espaço
+        flexGrow: 1, 
     },
 });
 

@@ -1,10 +1,11 @@
-// Arquivo: RubricaScreen.js (Implementação de Desenho Real com Fallback para Web)
+// Arquivo: RubricaScreen.js (USANDO RNSketchCanvas)
 
-import React, { useState, useRef } from 'react'; // 🚨 ADICIONADO: useRef
+import React, { useState, useRef } from 'react';
 import { StyleSheet, Text, View, Button, SafeAreaView, ScrollView, Alert, Dimensions, Platform } from 'react-native';
-import Signature from 'react-native-signature-canvas';
+// 🚨 COMPONENTE NOVO: RNSketchCanvas
+import RNSketchCanvas from '@terrylinla/react-native-sketch-canvas'; 
 import * as FileSystem from 'expo-file-system';
-import { saveSignatureBase64 } from './BufferService'; // ⬅️ IMPORTAÇÃO CORRETA
+import { saveSignatureBase64 } from './BufferService'; // Sua função corrigida
 
 const { width } = Dimensions.get('window');
 
@@ -12,87 +13,64 @@ const { width } = Dimensions.get('window');
 const CANVAS_WIDTH = width * 0.9;
 const CANVAS_HEIGHT = 200;
 
-// 🚨 FUNÇÃO DE MOCK
+// 🚨 FUNÇÃO DE MOCK (Mantida para Web)
 const MOCK_URI_PREFIX = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
-
-/* // ⭐️ FUNÇÃO CRÍTICA ANTIGA: Salva o Base64 da Assinatura em uma URI local (COMENTADO - LÓGICA MOVIDA)
-const saveBase64AsFile = async (base64Data, signerId, setRubricaUri) => {
-    // 🎯 CORREÇÃO: Usar REGEX para limpar qualquer prefixo MIME (mais robusto)
-    if (!base64Data || typeof base64Data !== 'string' || !base64Data.startsWith('data:')) {
-        Alert.alert("Erro", "O Canvas não capturou o desenho. Tente novamente.");
-        return; 
-    }
-
-    // Remove o prefixo de tipo de dado ("data:image/png;base64,") para obter apenas a Base64
-    const base64Clean = base64Data.split(',')[1]; 
-
-    const fileName = `rubrica_${signerId}_${Date.now()}.png`;
-    const fileUri = FileSystem.cacheDirectory + fileName; 
-
-    try {
-        await FileSystem.writeAsStringAsync(fileUri, base64Clean, { 
-            encoding: FileSystem.EncodingType.Base64,
-        });
-        
-        setRubricaUri(fileUri); 
-        Alert.alert("Sucesso", "Assinatura capturada e salva.");
-        
-    } catch (error) {
-        console.error("Erro ao salvar assinatura como URI (FileSystem):", error);
-        Alert.alert("Erro", "Falha ao processar a assinatura. Tente novamente.");
-    }
-};
-*/
-
 
 export default function RubricaScreen({ route, navigation }) {
     const { signerId, otpData } = route.params;
     const [rubricaUri, setRubricaUri] = useState(null);
     const [isSimulated, setIsSimulated] = useState(false);
     
-    const signatureRef = useRef(null); // ⬅️ 1. ADICIONADO: Referência para o Canvas
+    // 🚨 REFERÊNCIA PARA O NOVO CANVAS
+    const sketchRef = useRef(null); 
 
 
-    // ✅ FUNÇÃO CHAMADA PELO onOK DO COMPONENTE NATIVO
-    const handleEndDrawing = async (uriBase64) => { // 🚨 TORNAR ASSÍNCRONA
-        if (!uriBase64) {
-            Alert.alert("Atenção", "Nenhuma assinatura detectada.");
+    // ✅ FUNÇÃO CHAMADA PELO BOTÃO (Nova lógica para exportar)
+    const handleExportSignature = async () => {
+        if (rubricaUri !== null) {
+            Alert.alert("Atenção", "A rubrica já está salva. Limpe para refazer.");
             return;
         }
 
-        // 🎯 CORREÇÃO: CHAMA O NOVO SERVIÇO (BufferService)
-        const savedUri = await saveSignatureBase64(uriBase64, signerId);
-        
-        if (savedUri) {
-            setRubricaUri(savedUri); 
-            Alert.alert("Sucesso", "Assinatura capturada e salva.");
-        } else {
-            Alert.alert("Erro", "Falha ao processar a assinatura. Tente novamente.");
+        if (!sketchRef.current) {
+             Alert.alert("Erro", "O Canvas de assinatura não foi inicializado.");
+             return;
         }
-        setIsSimulated(false);
+        
+        // 🚨 AÇÃO CRÍTICA: Chamada do método do novo Canvas para obter Base64
+        // Parâmetros: 'png', transparência (false), somente Base64 pura (true)
+        sketchRef.current.getBase64('png', false, true, async (error, base64StringPura) => {
+            if (error) {
+                Alert.alert("Erro", "Falha ao gerar a imagem da assinatura.");
+                console.error("Erro RNSketchCanvas:", error);
+                return;
+            }
+            if (!base64StringPura) {
+                 Alert.alert("Atenção", "Nenhuma assinatura detectada.");
+                 return;
+            }
+            
+            // 🎯 CHAMA O BufferService com a Base64 PURA
+            const savedUri = await saveSignatureBase64(base64StringPura, signerId);
+            
+            if (savedUri) {
+                setRubricaUri(savedUri); 
+                Alert.alert("Sucesso", "Assinatura capturada e salva.");
+            } else {
+                // O BufferService já mostra um alerta, mas podemos reforçar aqui
+                Alert.alert("Erro", "Falha ao processar a assinatura. Tente novamente.");
+            }
+            setIsSimulated(false);
+        });
     };
 
     // ⭐️ LÓGICA DE SIMULAÇÃO (USADO NO WEB)
     const handleSimulateExport = () => {
         if (Platform.OS === 'web') {
+            // No Web, simulamos, pois o RNSketchCanvas não funciona
             setRubricaUri(MOCK_URI_PREFIX);
             setIsSimulated(true);
             Alert.alert("Simulação Completa", "Rubrica simulada. Prossiga para a verificação.");
-        }
-    };
-
-    // 🎯 FUNÇÃO PARA EXPORTAR (CHAMADA PELO BOTÃO)
-    const handleExportSignature = () => {
-        if (rubricaUri !== null) {
-            Alert.alert("Atenção", "A rubrica já está salva. Limpe para refazer.");
-            return;
-        }
-        
-        // 🚨 AÇÃO CRÍTICA: Força o componente a exportar o desenho
-        if (signatureRef.current) { 
-            signatureRef.current.readSignature(); // ⬅️ ACIONA O onOK/handleEndDrawing
-        } else {
-            Alert.alert("Erro", "O Canvas de assinatura não foi inicializado."); 
         }
     };
 
@@ -114,8 +92,8 @@ export default function RubricaScreen({ route, navigation }) {
     const handleClear = () => {
         setRubricaUri(null);
         setIsSimulated(false);
-        // Garante que o canvas seja limpo (só funciona se o ref não for nulo)
-        if (signatureRef.current) signatureRef.current.clearSignature(); 
+        // 🚨 MÉTODO DE LIMPEZA DO NOVO CANVAS
+        if (sketchRef.current) sketchRef.current.clear(); 
     };
 
 
@@ -129,17 +107,13 @@ export default function RubricaScreen({ route, navigation }) {
                     {/* 🚨 IMPLEMENTAÇÃO CONDICIONAL */}
                     <View style={styles.canvasContainer}>
                         {Platform.OS !== 'web' ? (
-                            // ✅ COMPONENTE REAL: Android/iOS
-                            <Signature
-                                ref={signatureRef} // ⬅️ 2. CONECTAR A REFERÊNCIA AQUI
-                                onOK={handleEndDrawing} 
-                                onClear={handleClear}
-                                descriptionText="Assine aqui"
-                                penColor="black"
-                                backgroundColor="rgb(255,255,255)"
+                            // ✅ COMPONENTE NOVO: RNSketchCanvas
+                            <RNSketchCanvas
+                                ref={sketchRef} // ⬅️ CONECTAR A REFERÊNCIA AQUI
+                                strokeColor={'black'}
+                                strokeWidth={5}
                                 containerStyle={styles.signatureContainer}
-                                wrapperStyle={styles.signatureWrapper}
-                                webStyle={`.m-signature-pad--footer {display: none;} body {background-color: #FFF;}`}
+                                // Removido onOK e onClear pois usaremos o ref
                             />
                         ) : (
                             // ✅ PLACEHOLDER: WEB
@@ -162,7 +136,7 @@ export default function RubricaScreen({ route, navigation }) {
                     </Text>
 
                     <View style={{ marginTop: 30 }}>
-                        {/* 🎯 NOVO BOTÃO: 1. SALVAR RUBRICA (Ação Crítica) */}
+                        {/* 🎯 BOTÃO CHAMA handleExportSignature para forçar a Base64 */}
                          <Button
                             title="1. Salvar Rubrica"
                             onPress={handleExportSignature} 
@@ -202,6 +176,7 @@ export default function RubricaScreen({ route, navigation }) {
     );
 }
 
+// ... Estilos (Styles.create permanecem os mesmos, apenas a referência de nome de componente muda no container)
 const styles = StyleSheet.create({
     safeContainer: { flex: 1, backgroundColor: '#f8f9fa' },
     scrollContainer: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 },
@@ -239,8 +214,5 @@ const styles = StyleSheet.create({
     signatureContainer: {
         flex: 1,
     },
-    signatureWrapper: {
-        flex: 1,
-        borderWidth: 0,
-    }
+    // Removido signatureWrapper, não é usado pelo RNSketchCanvas
 });
