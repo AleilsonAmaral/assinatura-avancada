@@ -3,7 +3,8 @@
 import React, { useState, useRef } from 'react'; // 🚨 ADICIONADO: useRef
 import { StyleSheet, Text, View, Button, SafeAreaView, ScrollView, Alert, Dimensions, Platform } from 'react-native';
 import Signature from 'react-native-signature-canvas';
-import * as FileSystem from 'expo-file-system'; // Importação necessária para salvar o arquivo
+import * as FileSystem from 'expo-file-system';
+import { saveSignatureBase64 } from './BufferService'; // ⬅️ IMPORTAÇÃO CORRETA
 
 const { width } = Dimensions.get('window');
 
@@ -11,10 +12,10 @@ const { width } = Dimensions.get('window');
 const CANVAS_WIDTH = width * 0.9;
 const CANVAS_HEIGHT = 200;
 
-// 🚨 FUNÇÃO DE MOCK: Usaremos a função de mock para o ambiente Web (navegador)
+// 🚨 FUNÇÃO DE MOCK
 const MOCK_URI_PREFIX = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
-// ⭐️ FUNÇÃO CRÍTICA: Salva o Base64 da Assinatura em uma URI local
+/* // ⭐️ FUNÇÃO CRÍTICA ANTIGA: Salva o Base64 da Assinatura em uma URI local (COMENTADO - LÓGICA MOVIDA)
 const saveBase64AsFile = async (base64Data, signerId, setRubricaUri) => {
     // 🎯 CORREÇÃO: Usar REGEX para limpar qualquer prefixo MIME (mais robusto)
     if (!base64Data || typeof base64Data !== 'string' || !base64Data.startsWith('data:')) {
@@ -41,6 +42,7 @@ const saveBase64AsFile = async (base64Data, signerId, setRubricaUri) => {
         Alert.alert("Erro", "Falha ao processar a assinatura. Tente novamente.");
     }
 };
+*/
 
 
 export default function RubricaScreen({ route, navigation }) {
@@ -52,11 +54,20 @@ export default function RubricaScreen({ route, navigation }) {
 
 
     // ✅ FUNÇÃO CHAMADA PELO onOK DO COMPONENTE NATIVO
-    const handleEndDrawing = (uriBase64) => {
-        if (uriBase64) {
-            saveBase64AsFile(uriBase64, signerId, setRubricaUri); 
-        } else {
+    const handleEndDrawing = async (uriBase64) => { // 🚨 TORNAR ASSÍNCRONA
+        if (!uriBase64) {
             Alert.alert("Atenção", "Nenhuma assinatura detectada.");
+            return;
+        }
+
+        // 🎯 CORREÇÃO: CHAMA O NOVO SERVIÇO (BufferService)
+        const savedUri = await saveSignatureBase64(uriBase64, signerId);
+        
+        if (savedUri) {
+            setRubricaUri(savedUri); 
+            Alert.alert("Sucesso", "Assinatura capturada e salva.");
+        } else {
+            Alert.alert("Erro", "Falha ao processar a assinatura. Tente novamente.");
         }
         setIsSimulated(false);
     };
@@ -120,7 +131,7 @@ export default function RubricaScreen({ route, navigation }) {
                         {Platform.OS !== 'web' ? (
                             // ✅ COMPONENTE REAL: Android/iOS
                             <Signature
-                                ref={signatureRef} // ⬅️ CONECTAR A REFERÊNCIA AQUI
+                                ref={signatureRef} // ⬅️ 2. CONECTAR A REFERÊNCIA AQUI
                                 onOK={handleEndDrawing} 
                                 onClear={handleClear}
                                 descriptionText="Assine aqui"
