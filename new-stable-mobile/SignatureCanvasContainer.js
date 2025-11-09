@@ -1,121 +1,125 @@
-// Arquivo: SignatureCanvasContainer.js (USANDO RNSketchCanvas)
+// Arquivo: new-stable-mobile/components/DigitalStamp.js
+import React from 'react';
+import { View, Text, StyleSheet, Linking, TouchableOpacity } from 'react-native';
 
-import React, { useRef } from 'react';
-import { StyleSheet, View, Alert, Button } from 'react-native';
-import * as FileSystem from 'expo-file-system';
-// 🚨 NOVO COMPONENTE
-import RNSketchCanvas from '@terrylinla/react-native-sketch-canvas'; 
+/**
+ * Componente de Carimbo de Assinatura Digital (Certificado de Validação)
+ * Exibe os metadados de forma visualmente destacada.
+ * @param {object} props - Dados de validação da assinatura.
+ */
+const SignatureCanvasConteiner = ({ 
+    signerName, 
+    signatureDate, 
+    validationUrl,
+    documentHash // Opcional, para exibição de segurança
+}) => {
 
-// ⭐️ FUNÇÃO DE SALVAMENTO: MOVIDA PARA DENTRO do componente (Pode ser movida para o RubricaScreen, se preferir)
-const saveBase64AsFile = async (base64Data, signerId, setRubricaUri) => {
-    
-    // **NOTA:** O RNSketchCanvas com o parâmetro 'true' na exportação JÁ retorna a Base64 PURA.
-    // Se o seu RNSketchCanvas estiver configurado corretamente, a linha de substituição abaixo
-    // não será estritamente necessária, mas é mantida por segurança (Opção A da nossa análise).
-    const base64Clean = base64Data.includes('data:') ? base64Data.split(',')[1] : base64Data;
-    
-    const fileName = `rubrica_${signerId}_${Date.now()}.png`;
-    const fileUri = FileSystem.cacheDirectory + fileName; 
-
-    try {
-        await FileSystem.writeAsStringAsync(fileUri, base64Clean, {
-            encoding: FileSystem.EncodingType.Base64,
-        });
-        
-        // 🎯 O ESTADO É ATUALIZADO AQUI
-        setRubricaUri(fileUri);
-        Alert.alert("Sucesso", "Assinatura capturada e salva.");
-        
-    } catch (error) {
-        console.error("Erro ao salvar assinatura como URI:", error);
-        Alert.alert("Erro", "Falha ao processar a assinatura. Tente novamente.");
-    }
-};
-
-const SignatureCanvasContainer = ({ signerId, setRubricaUri, rubricaUri }) => {
-    // 🚨 REFERÊNCIA PARA O NOVO CANVAS
-    const sketchRef = useRef(null);
-    
-    // Chamado pelo botão '1. Salvar Rubrica'
-    const handleExportSignature = () => {
-        // Se já está salvo, impede um novo salvamento
-        if (rubricaUri !== null) {
-            Alert.alert("Atenção", "A rubrica já está salva. Limpe para refazer.");
-            return;
-        }
-
-        if (sketchRef.current) {
-            // 🚨 NOVO MÉTODO: getBase64() do RNSketchCanvas
-            // Parâmetros: 'png', transparência (false), somente Base64 pura (true), callback
-            sketchRef.current.getBase64('png', false, true, (error, base64StringPura) => {
-                if (error) {
-                    Alert.alert("Erro", "Falha ao gerar a Base64 da assinatura.");
-                    return;
-                }
-                
-                if (base64StringPura) {
-                    // 🎯 CHAMA A FUNÇÃO DE SALVAMENTO COM A BASE64 PURA
-                    saveBase64AsFile(base64StringPura, signerId, setRubricaUri);
-                } else {
-                    Alert.alert("Atenção", "Nenhuma assinatura detectada.");
-                }
-            });
-            
-        } else {
-            Alert.alert("Erro", "O Canvas de assinatura não foi inicializado.");
+    const handlePressValidation = () => {
+        if (validationUrl) {
+            // Tenta abrir a URL no navegador
+            Linking.openURL(validationUrl).catch(err => console.error("Falha ao abrir URL:", err));
         }
     };
-    
-    // Não precisamos de styleCanvas web, pois o RNSketchCanvas não é usado no Web
-    // A lógica de Web deve estar no RubricaScreen (que é o que você tinha).
+
+    const formatDate = (isoDate) => {
+        try {
+            const date = new Date(isoDate);
+            // Formato similar ao gov.br: DD/MM/AAAA HH:MM:SS FUSO
+            return date.toLocaleString('pt-BR', {
+                day: '2-digit', 
+                month: '2-digit', 
+                year: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit',
+                second: '2-digit',
+                timeZoneName: 'short' // Exibe o fuso horário (ex: GMT-3)
+            });
+        } catch (e) {
+            return 'Data Inválida';
+        }
+    };
 
     return (
-        <>
-            <View style={styles.canvasContainer}>
-                {/* 🚨 COMPONENTE NOVO */}
-                <RNSketchCanvas
-                    ref={sketchRef}
-                    strokeColor={'black'} // Cor da caneta
-                    strokeWidth={5} // Largura da caneta
-                    containerStyle={{ flex: 1 }} // Ocupa o container
-                    // Não precisa de onOK ou onEmpty, pois usamos o getBase64() no botão.
-                />
-            </View>
+        <View style={styles.container}>
+            <Text style={styles.header}>Documento assinado digitalmente</Text>
             
-            {/* Botão de Limpar */}
-            <Button 
-                title="Limpar Assinatura" 
-                onPress={() => {
-                    if (sketchRef.current) sketchRef.current.clear(); // 🚨 NOVO MÉTODO DE LIMPEZA
-                    setRubricaUri(null); // Define o URI como NULL
-                }} 
-                color="#dc3545" 
-                disabled={rubricaUri === null} 
-            />
+            {/* Nome do Signatário */}
+            <Text style={styles.name}>{signerName.toUpperCase()}</Text>
             
-            {/* Botão Salvar Rubrica */}
-            <View style={{ marginTop: 15 }}>
-                <Button 
-                    title="1. Salvar Rubrica" 
-                    onPress={handleExportSignature} // Chama a nova lógica de exportação
-                    color="#007BFF" 
-                    disabled={rubricaUri !== null} 
-                />
-            </View>
-        </>
+            {/* Data e Hora */}
+            <Text style={styles.dataLabel}>
+                Data: <Text style={styles.dataValue}>{formatDate(signatureDate)}</Text>
+            </Text>
+
+            {/* Link de Verificação */}
+            <TouchableOpacity onPress={handlePressValidation} style={styles.linkContainer}>
+                <Text style={styles.linkText}>Verifique em</Text>
+                <Text style={styles.linkUrl}>{validationUrl}</Text>
+            </TouchableOpacity>
+
+            {/* Opcional: Hash de integridade */}
+            {documentHash && (
+                <Text style={styles.hashText}>
+                    Hash: {documentHash.substring(0, 8)}...
+                </Text>
+            )}
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
-    canvasContainer: {
-        height: 200, 
-        width: '100%',
-        marginBottom: 10,
-        borderWidth: 1,
-        borderColor: '#ccc',
-        // Adicionando flex para garantir que o RNSketchCanvas ocupe o espaço
-        flexGrow: 1, 
+    container: {
+        borderWidth: 2,
+        borderColor: '#dc3545', // Vermelho para destaque (como o gov.br)
+        padding: 15,
+        backgroundColor: '#f8f9fa', // Fundo leve
+        borderRadius: 4,
+        alignSelf: 'stretch', // Ocupa a largura total do container pai
+        marginVertical: 15,
     },
+    header: {
+        fontSize: 13,
+        fontWeight: 'bold',
+        marginBottom: 5,
+        color: '#343a40',
+        textAlign: 'center',
+    },
+    name: {
+        fontSize: 16,
+        fontWeight: '900',
+        color: '#000',
+        marginTop: 4,
+    },
+    dataLabel: {
+        fontSize: 12,
+        marginTop: 4,
+        color: '#6c757d',
+    },
+    dataValue: {
+        fontWeight: 'bold',
+        color: '#000',
+    },
+    linkContainer: {
+        marginTop: 8,
+        paddingTop: 8,
+        borderTopWidth: 1,
+        borderTopColor: '#ccc',
+    },
+    linkText: {
+        fontSize: 11,
+        color: '#6c757d',
+    },
+    linkUrl: {
+        fontSize: 12,
+        color: '#007bff', 
+        textDecorationLine: 'underline',
+        fontWeight: 'bold',
+    },
+    hashText: {
+        fontSize: 10,
+        color: '#6c757d',
+        marginTop: 4,
+    }
 });
 
-export default SignatureCanvasContainer;
+export default SignatureCanvasConteiner;

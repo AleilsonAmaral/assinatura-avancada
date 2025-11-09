@@ -1,50 +1,66 @@
-// Arquivo: src/services/BufferService.js
+// Arquivo: new-stable-mobile/services/apiService.js
+// 🚨 MOCKADO: Em produção, substituir por chamadas reais a 'digital-signer-api'
 
-import * as FileSystem from 'expo-file-system';
-import { Alert } from 'react-native';
+// Função utilitária simples para simular a criação de um hash (DEVE SER FEITO NO BACKEND REAL)
+const generateMockHash = (data) => {
+    // Simula um SHA-256 seguro (apenas para testar o formato)
+    const combinedData = data + new Date().getTime();
+    return `sha256-${Math.random().toString(36).substring(2, 12)}${btoa(combinedData).substring(0, 10)}`; 
+};
 
 /**
- * Salva a assinatura Base64 no sistema de arquivos local como um arquivo PNG.
- * * @param {string} base64Data - A string Base64 da assinatura (PURA, sem prefixo 'data:').
- * @param {string} signerId - O ID do signatário (para nomear o arquivo).
- * @returns {Promise<string|null>} O URI do arquivo salvo (file://...) ou null em caso de falha.
+ * Simula o envio da intenção de assinatura para a API.
+ * Receberia o Base64/Intenção e retorna metadados de validação.
  */
-export const saveSignatureBase64 = async (base64Data, signerId = 'temp') => {
+export const uploadSignature = async (intentionPayload, signerId) => {
+    console.log(`[API Mock] Iniciando processo de assinatura para ID: ${signerId}`);
     
-    // **1. VALIDAÇÃO DE ENTRADA (Ajustada)**
-    // A Base64 pura deve ter pelo menos 100 caracteres para ser considerada um desenho.
-    if (!base64Data || typeof base64Data !== 'string' || base64Data.length < 100) {
-        console.warn("BufferService: Dados insuficientes para salvar a assinatura.");
-        Alert.alert("Erro", "Desenho não capturado. Dados insuficientes.");
-        return null;
+    // 💡 Simula o tempo de resposta do servidor
+    await new Promise(resolve => setTimeout(resolve, 1500)); 
+
+    if (signerId === 'ERROR_USER') {
+         throw new Error("Usuário não autorizado ou bloqueado.");
     }
-
-    // O NOVO CANVAS JÁ GERA A BASE64 PURA, ENTÃO ELIMINAMOS A LIMPEZA
-    // Linha removida: const base64Clean = base64Data.split(',')[1]; 
-    const base64Pura = base64Data;
     
-    const fileName = `rubrica_${signerId}_${Date.now()}.png`;
-    // Usamos cacheDirectory para arquivos temporários/não permanentes.
-    const fileUri = FileSystem.cacheDirectory + fileName; 
+    // Simula o processamento no backend:
+    const mockHash = generateMockHash(intentionPayload);
+    const mockValidationUrl = `https://seusistema.com/verifica/${signerId}/${mockHash.substring(0, 10)}`;
+    const now = new Date();
 
-    try {
-        // 2. AÇÃO CRÍTICA: Escrita do arquivo
-        // Usamos a string Base64 pura com o encoding Base64 do FileSystem.
-        await FileSystem.writeAsStringAsync(fileUri, base64Pura, { 
-            encoding: FileSystem.EncodingType.Base64,
-        });
-        
-        console.log(`[BufferService] Assinatura salva em: ${fileUri}`);
-        return fileUri; // Retorna o URI de sucesso
-        
-    } catch (error) {
-        console.error("[FileSystem ERROR - Write Failed]:", error);
-        // O erro 'Base64 of undefined' deve sumir. Se persistir, o problema é nativo.
-        Alert.alert("Erro", "Falha crítica no processamento da assinatura. Tente novamente.");
-        return null;
+    return {
+        // Metadados para o Carimbo Digital
+        name: `Assinante Mockado ${signerId}`,
+        date: now.toISOString(),
+        validationUrl: mockValidationUrl,
+        // Hash (CRÍTICO para segurança)
+        hash: mockHash,
+    };
+};
+
+/**
+ * Simula o envio do código OTP para validação final da assinatura.
+ */
+export const validateOTP = async (otpCode, signatureHash) => {
+    console.log(`[API Mock] Validando OTP: ${otpCode} para Hash: ${signatureHash.substring(0, 8)}...`);
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    // Código de sucesso hardcoded para teste
+    if (otpCode === '123456') { 
+        return { success: true, message: "Assinatura validada e selada." };
+    } else {
+        throw new Error("Código OTP inválido. Tente o código de teste: 123456.");
     }
 };
 
-// Exportamos a função, não um objeto completo (como é o seu arquivo)
-// Se precisar exportar o objeto como antes:
-// export default { saveSignatureBase64 };
+// Se você tiver uma API real, você usaria o fetch/axios aqui:
+/*
+export const uploadSignature = async (intentionPayload, signerId) => {
+    const response = await fetch('http://localhost:3000/api/signature/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intentionPayload, signerId })
+    });
+    if (!response.ok) throw new Error('API Error: ' + response.statusText);
+    return response.json();
+};
+*/
