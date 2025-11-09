@@ -7,7 +7,7 @@ import { View, Text, StyleSheet, Linking, TouchableOpacity } from 'react-native'
  * Exibe os metadados de forma visualmente destacada.
  * @param {object} props - Dados de validação da assinatura.
  */
-const SignatureCanvasConteiner = ({ 
+const SignatureCanvasContainer = ({ 
     signerName, 
     signatureDate, 
     validationUrl,
@@ -122,4 +122,4 @@ const styles = StyleSheet.create({
     }
 });
 
-export default SignatureCanvasConteiner;
+export default SignatureCanvasContainer;

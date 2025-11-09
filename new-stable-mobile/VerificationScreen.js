@@ -1,3 +1,5 @@
+// Arquivo: VerificationScreen.js (FINAL E FUNCIONAL)
+
 import React, { useState, useEffect } from 'react';
 import { 
     StyleSheet, 
@@ -9,8 +11,8 @@ import {
     ScrollView, 
     Alert,
     ActivityIndicator,
-    TouchableOpacity, // Necessário para o DigitalStamp
-    Linking, // Necessário para o DigitalStamp
+    TouchableOpacity, 
+    Linking, 
     Platform 
 } from 'react-native';
 
@@ -28,7 +30,7 @@ const SIGNER_NAME = 'Usuário de Teste';
 const TEST_OTP_CODE = '123456';
 
 // =========================================================
-// 🚨 SEÇÃO 1: MOCK SERVICE (apiService.js embutido)
+// 🚨 SEÇÃO 1: MOCK SERVICE (MOCK MUDADO PARA O ESCOPO GLOBAL)
 // =========================================================
 
 const generateMockHash = (data) => {
@@ -36,7 +38,8 @@ const generateMockHash = (data) => {
     return `sha256-${Math.random().toString(36).substring(2, 12)}${btoa(combinedData).substring(0, 10)}`; 
 };
 
-export const uploadSignature = async (intentionPayload, signerId) => {
+// CORREÇÃO: Funções agora são const no escopo global do arquivo.
+const uploadSignature = async (intentionPayload, signerId) => { 
     await new Promise(resolve => setTimeout(resolve, 1500)); 
     if (signerId === 'ERROR_USER') throw new Error("Usuário não autorizado ou bloqueado.");
     
@@ -44,7 +47,6 @@ export const uploadSignature = async (intentionPayload, signerId) => {
     const mockValidationUrl = `https://seusistema.com/verifica/${signerId}/${mockHash.substring(0, 10)}`;
     const now = new Date();
 
-    // Retorna os metadados necessários para o Carimbo Digital
     return {
         name: `Assinante Mockado ${signerId}`,
         date: now.toISOString(),
@@ -53,7 +55,7 @@ export const uploadSignature = async (intentionPayload, signerId) => {
     };
 };
 
-export const validateOTP = async (otpCode, signatureHash) => {
+const validateOTP = async (otpCode, signatureHash) => {
     await new Promise(resolve => setTimeout(resolve, 800));
     if (otpCode === TEST_OTP_CODE) { 
         return { success: true, message: "Assinatura validada e selada." };
@@ -67,7 +69,7 @@ export const validateOTP = async (otpCode, signatureHash) => {
 // 🎨 SEÇÃO 2: COMPONENTE DigitalStamp (Carimbo de Validação)
 // =========================================================
 
-const SignatureCanvasConteiner = ({ 
+const SignatureCanvasContainer = ({ 
     signerName, 
     signatureDate, 
     validationUrl,
@@ -127,7 +129,15 @@ const stampStyles = StyleSheet.create({
 // 🎯 SEÇÃO 3: TELA PRINCIPAL (VerificationScreen.js)
 // =========================================================
 
-// --- Helpers e Constantes de Fluxo ---
+// ⭐️ FUNÇÃO AUXILIAR: Converte URI local em um Blob (Usada APENAS para o PDF)
+const uriToBlob = async (uri) => {
+    try {
+        const response = await fetch(uri);
+        return await response.blob();
+    } catch (error) {
+        throw new Error("Falha ao preparar o arquivo para upload.");
+    }
+};
 
 const STEPS = {
     PREPARE: 'PREPARE',
@@ -145,21 +155,11 @@ const Message = ({ message, type }) => {
     );
 };
 
-// ⭐️ FUNÇÃO AUXILIAR: Converte URI local em um Blob (Usada APENAS para o PDF)
-const uriToBlob = async (uri) => {
-    try {
-        const response = await fetch(uri);
-        return await response.blob();
-    } catch (error) {
-        throw new Error("Falha ao preparar o arquivo para upload.");
-    }
-};
 
 export default function VerificationScreen({ route, navigation }) {
     
-    // 🚨 PARAMS: O fluxo idealmente não traria URI, mas ajustamos para compatibilidade
+    // PARAMS
     const signerId = route.params?.signerId || 'USER_DEFAULT_ID';
-    // const signatureUri = route.params?.signatureUri; // Removido, mas mantido para compatibilidade
     
     // --- Estados de Controle de Componente ---
     const [otpCode, setOtpCode] = useState(''); 
@@ -193,7 +193,7 @@ export default function VerificationScreen({ route, navigation }) {
 
     // ⭐️ FUNÇÃO PARA ABRIR O SELETOR DE ARQUIVOS (PDF)
     const pickDocument = async () => {
-        // ... (Lógica de pickDocument, mantida conforme seu código)
+        // ... (Lógica de pickDocument)
         try {
             const result = await DocumentPicker.getDocumentAsync({
                 type: 'application/pdf', 
@@ -220,15 +220,15 @@ export default function VerificationScreen({ route, navigation }) {
     const handleStartSignature = async () => {
         // 🚨 VALIDAÇÃO: Pelo menos um tipo de documento deve ser selecionado.
         if (!templateId) {
-             setStatus({ message: "❌ Selecione o tipo de documento (Padrão ou Upload).", type: 'error' });
-             return;
+              setStatus({ message: "❌ Selecione o tipo de documento (Padrão ou Upload).", type: 'error' });
+              return;
         }
 
         setIsLoading(true);
         try {
             const intentionPayload = `Intent_Sign_${docId}_by_${signerId}`; 
             
-            // 🚨 Chama o serviço de upload para iniciar o processo no backend
+            // ✅ uploadSignature agora é acessível (Escopo Corrigido)
             const { name, date, validationUrl, hash } = await uploadSignature(
                 intentionPayload, signerId
             );
@@ -268,7 +268,7 @@ export default function VerificationScreen({ route, navigation }) {
 
         try {
             // 1. Validação OTP (Primeiro, sempre)
-            await validateOTP(otpCode, signatureMetaData.documentHash); 
+            await validateOTP(otpCode, signatureMetaData.documentHash); // ✅ validateOTP agora é acessível
             
             // 2. Continua com o Upload/Assinatura (Se o OTP for OK)
             const token = await AsyncStorage.getItem('jwtToken'); 
@@ -336,10 +336,11 @@ export default function VerificationScreen({ route, navigation }) {
                 <View style={styles.card}>
                     <Text style={styles.successHeader}>✅ Assinatura Digital Concluída!</Text>
                     <Text style={styles.infoText}>O documento foi selado com sucesso e está disponível para download.</Text>
-                    <SignatureCanvasConteiner
+                    <SignatureCanvasContainer
                         signerName={signatureMetaData.signerName}
                         signatureDate={signatureMetaData.signatureDate}
                         validationUrl={signatureMetaData.validationUrl}
+                        documentHash={signatureMetaData.hash} // Adicionamos o hash para o carimbo
                     />
                     <Button title="Ver Evidência (Navegar)" onPress={() => navigation.navigate('Evidence', { documentId: docId })} color="#007BFF" />
                 </View>

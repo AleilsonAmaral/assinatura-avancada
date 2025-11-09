@@ -14,8 +14,8 @@ import {
 } from 'react-native';
 
 // 🚨 IMPORTANTE: Crie estes arquivos em seus respectivos diretórios
-import SignatureCanvasConteiner from './SignatureCanvasConteiner'; 
-import { uploadSignature, validateOTP } from './services/apiService'; 
+import SignatureCanvasContainer from './SignatureCanvasContainer.js'; 
+//import { uploadSignature, validateOTP } from './services/apiService'; 
 
 // --- Constantes de Estado ---
 const STEPS = {
