@@ -1,34 +1,67 @@
-// Arquivo: src/services/apiServiceMock.js (CORRIGIDO PARA INTEGRAÇÃO REAL)
+// Arquivo: src/services/apiService.js (INTEGRAÇÃO 100% REAL E ROBUSTA)
 
-const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1'; // Reafirmando o Base URL
+const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1';
 
+// Função auxiliar (mantida para caso outras partes do app a usem)
 function generateMockHash(data) {
     const combinedData = data + new Date().getTime();
     return `sha256-${Math.random().toString(36).substring(2, 12)}${btoa(combinedData).substring(0, 10)}`; 
 }
 
+/**
+ * Função utilitária para extrair a mensagem de erro da resposta da API.
+ * Suporta JSON, Texto puro ou falhas na leitura.
+ */
+async function getApiErrorMessage(response, defaultMessage) {
+    let finalMessage = defaultMessage || `Falha HTTP: ${response.status}.`;
+    
+    try {
+        const contentType = response.headers.get('content-type');
+        const isJson = contentType && contentType.includes('application/json');
+        
+        if (isJson) {
+            const errorData = await response.json();
+            finalMessage = errorData.message || finalMessage;
+        } else {
+            const rawText = await response.text();
+            finalMessage = `Falha HTTP ${response.status}. Resposta da API: ${rawText.substring(0, 100)}`;
+        }
+    } catch (e) {
+         console.error("Erro ao tentar ler resposta da API:", e);
+         finalMessage = `Falha HTTP ${response.status}. Resposta da API vazia ou ilegível.`;
+    }
+    return finalMessage;
+}
+
+
+// =========================================================
+// 1. INÍCIO DE ASSINATURA (DISPARA ENVIO DE OTP)
+// =========================================================
+
 export const uploadSignature = async (intentionPayload, signerId) => { 
-    // MOCK DE DADOS: O frontend espera estes dados
-    const mockHash = generateMockHash(intentionPayload);
-    const mockValidationUrl = `https://seusistema.com/verifica/${signerId}/${mockHash.substring(0, 10)}`;
-    const now = new Date();
+    console.log(`[API] Iniciando assinatura em: ${API_BASE_URL}/signature/start`);
     
-    // 💡 Em um cenário real, esta chamada (fetch) dispararia o envio do OTP
-    await new Promise(resolve => setTimeout(resolve, 1500)); // Simula latência de rede
+    const response = await fetch(`${API_BASE_URL}/signature/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intentionPayload, signerId }),
+    });
+
+    if (!response.ok) {
+        const message = await getApiErrorMessage(response, 'Falha ao iniciar o processo de assinatura.');
+        throw new Error(message);
+    }
     
-    return {
-        name: `Assinante Mockado ${signerId}`,
-        date: now.toISOString(),
-        validationUrl: mockValidationUrl,
-        hash: mockHash,
-    };
+    // Espera-se que a API real retorne os metadados do selo (name, date, validationUrl, hash)
+    return response.json();
 };
 
+// =========================================================
+// 2. VALIDAÇÃO DE OTP
+// =========================================================
+
 export const validateOTP = async (otpCode, signatureHash) => {
-    // CORREÇÃO CRÍTICA: Substituímos o código de teste hardcoded (123456)
-    // por uma chamada real à sua API. O erro do OTP será determinado PELO SEU BACKEND.
-    
-    console.log(`[Frontend] Enviando OTP para API Real...`);
+    console.log(`[API] Enviando OTP para validação em: ${API_BASE_URL}/signature/validate`);
 
     const response = await fetch(`${API_BASE_URL}/signature/validate`, {
         method: 'POST',
@@ -36,12 +69,11 @@ export const validateOTP = async (otpCode, signatureHash) => {
         body: JSON.stringify({ otpCode, signatureHash }),
     });
 
-    const data = await response.json().catch(() => ({ message: 'Erro de resposta da API.' }));
-
-    if (!response.ok || data.success === false) {
-        // Se a validação falhar, o erro virá do seu servidor.
-        throw new Error(data.message || `Validação OTP falhou. Verifique o código.`);
+    if (!response.ok) {
+        const message = await getApiErrorMessage(response, 'Validação OTP falhou. Verifique o código.');
+        throw new Error(message);
     }
     
-    return data;
+    // Retorna a resposta OK da validação
+    return response.json();
 };

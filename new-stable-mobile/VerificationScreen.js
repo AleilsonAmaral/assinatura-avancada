@@ -7,7 +7,6 @@ import {
     View, 
     TextInput, 
     Button, 
-    SafeAreaView,
     ScrollView, 
     Alert,
     ActivityIndicator,
@@ -15,6 +14,9 @@ import {
     Linking, 
     Platform 
 } from 'react-native';
+
+// ✅ CORREÇÃO DE DEPRECIAÇÃO: Usando a importação de 'react-native-safe-area-context'
+import { SafeAreaView } from 'react-native-safe-area-context'; 
 
 // 🚨 Dependências do Fluxo
 import * as DocumentPicker from 'expo-document-picker'; 
@@ -39,17 +41,37 @@ function generateMockHash(data) {
     return `sha256-${Math.random().toString(36).substring(2, 12)}${btoa(combinedData).substring(0, 10)}`; 
 }
 
-// 1. INÍCIO DE ASSINATURA (SOLICITA OTP) - AGORA USA FETCH REAL
+// 1. INÍCIO DE ASSINATURA (SOLICITA OTP) - TRATAMENTO DE ERRO REFORÇADO
 async function uploadSignature(intentionPayload, signerId) { 
     const response = await fetch(`${API_BASE_URL}/signature/start`, { // Endpoint Real
         method: 'POST',
+        // ATENÇÃO: Verifique com sua API se headers de autenticação são necessários aqui.
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ intentionPayload, signerId }),
     });
 
     if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Erro de resposta da API.' }));
-        throw new Error(errorData.message || `Falha HTTP: ${response.status}. Falha ao enviar OTP.`);
+        // 🛠️ ALTERAÇÃO: Tenta extrair o erro da API de forma mais robusta (JSON ou Texto)
+        let finalMessage = `Falha HTTP: ${response.status}. Falha ao enviar OTP.`;
+        
+        try {
+            const isJson = response.headers.get('content-type')?.includes('application/json');
+            
+            if (isJson) {
+                const errorData = await response.json();
+                finalMessage = errorData.message || finalMessage;
+            } else {
+                const rawText = await response.text();
+                // Limita o texto cru para não poluir o erro no console
+                finalMessage = `Falha HTTP ${response.status}. Resposta da API: ${rawText.substring(0, 100)}`;
+            }
+        } catch (e) {
+             // Falha ao ler o corpo
+             console.error("Erro ao tentar ler resposta da API:", e);
+             finalMessage = `Falha HTTP ${response.status}. Resposta da API vazia ou ilegível.`;
+        }
+        
+        throw new Error(finalMessage);
     }
     
     // A API real deve retornar os metadados do selo (name, date, validationUrl, hash)
@@ -65,14 +87,25 @@ async function validateOTP(otpCode, signatureHash) {
         body: JSON.stringify({ otpCode, signatureHash }),
     });
 
-    const data = await response.json().catch(() => ({ message: 'Erro de resposta da API.' }));
-
-    if (!response.ok || data.success === false) {
-        // O erro agora virá do seu backend.
-        throw new Error(data.message || `Validação OTP falhou. Verifique o código.`);
+    // 🛠️ MELHORIA: Tratamento de erro semelhante para o validateOTP
+    if (!response.ok) {
+        let finalMessage = `Falha HTTP: ${response.status}. Validação OTP falhou.`;
+        try {
+            const isJson = response.headers.get('content-type')?.includes('application/json');
+            if (isJson) {
+                const errorData = await response.json();
+                finalMessage = errorData.message || finalMessage;
+            } else {
+                const rawText = await response.text();
+                finalMessage = `Falha HTTP ${response.status}. Resposta da API: ${rawText.substring(0, 100)}`;
+            }
+        } catch (e) {
+             console.error("Erro ao tentar ler resposta da API (OTP):", e);
+        }
+        throw new Error(finalMessage);
     }
     
-    return data;
+    return response.json();
 }
 
 // ⭐️ FUNÇÃO AUXILIAR: Converte URI local em um Blob
@@ -231,8 +264,8 @@ export default function VerificationScreen({ route, navigation }) {
     const handleStartSignature = async () => {
         // 🚨 VALIDAÇÃO: Pelo menos um tipo de documento deve ser selecionado.
         if (!templateId) {
-              setStatus({ message: "❌ Selecione o tipo de documento (Padrão ou Upload).", type: 'error' });
-              return;
+             setStatus({ message: "❌ Selecione o tipo de documento (Padrão ou Upload).", type: 'error' });
+             return;
         }
 
         setIsLoading(true);
@@ -252,7 +285,9 @@ export default function VerificationScreen({ route, navigation }) {
             
         } catch (error) {
             console.error("Erro ao iniciar assinatura:", error);
-            Alert.alert("Erro", "Falha ao iniciar o processo de assinatura. Tente novamente.");
+            Alert.alert("Erro", error.message || "Falha ao iniciar o processo de assinatura. Tente novamente.");
+            // 🛠️ Alteração: O error.message agora virá da API com mais detalhes
+            setStatus({ message: `❌ ${error.message || 'Falha desconhecida.'}`, type: 'error' });
         } finally {
             setIsLoading(false);
         }
@@ -273,6 +308,11 @@ export default function VerificationScreen({ route, navigation }) {
         if (!otpCode || otpCode.length !== 6 || !docTitle) {
             setStatus({ message: "❌ O código OTP e o Título do Documento são obrigatórios.", type: 'error' });
             return;
+        }
+        // Validação adicional de hash
+        if (!signatureMetaData || !signatureMetaData.documentHash) {
+             setStatus({ message: "❌ Hash de documento ausente. Reinicie a assinatura.", type: 'error' });
+             return;
         }
 
         setIsLoading(true);
@@ -301,7 +341,11 @@ export default function VerificationScreen({ route, navigation }) {
             // 🚨 SÓ ANEXA O PDF SE FOR FLUXO DE UPLOAD
             if (templateId === 'upload' && uploadedDocumentUri) {
                 const documentBlob = await uriToBlob(uploadedDocumentUri); 
-                formData.append('documentFile', documentBlob, docTitle); 
+                formData.append('documentFile', {
+                    uri: uploadedDocumentUri,
+                    name: docTitle,
+                    type: 'application/pdf',
+                });
             }
 
             // Requisição Final
@@ -316,7 +360,13 @@ export default function VerificationScreen({ route, navigation }) {
             try { data = await response.json(); } catch (jsonError) { data = { message: `Erro HTTP ${response.status}. Servidor inacessível.` }; }
 
             if (response.ok) {
-                setStatus({ message: "✅ Assinatura concluída. Navegando para Evidência.", type: 'success' });
+                setSignatureMetaData(prev => ({ ...prev, 
+                    signerName: data.signedBy || SIGNER_NAME,
+                    signatureDate: data.signedAt || new Date().toISOString(),
+                    validationUrl: data.validationUrl || prev.validationUrl,
+                    documentHash: data.finalHash || prev.documentHash
+                }));
+                setStatus({ message: "✅ Assinatura concluída. Documento selado.", type: 'success' });
                 setFlowStep(STEPS.CONFIRMED); // Não navega, apenas atualiza a tela
             } else {
                 setStatus({ message: `❌ Falha na Assinatura: ${data.message || 'Erro desconhecido.'}`, type: 'error' });
@@ -324,7 +374,7 @@ export default function VerificationScreen({ route, navigation }) {
 
         } catch (error) {
             console.error("Erro na requisição de assinatura:", error);
-            // Se falhar no OTP, o status será atualizado pelo catch interno do validateOTP
+            // Se falhar no OTP ou no sign, o erro.message será detalhado
             setStatus({ message: error.message || "Erro de Conexão. Tente novamente.", type: 'error' });
         } finally {
             setIsLoading(false);
@@ -352,7 +402,7 @@ export default function VerificationScreen({ route, navigation }) {
                         signerName={signatureMetaData.signerName}
                         signatureDate={signatureMetaData.signatureDate}
                         validationUrl={signatureMetaData.validationUrl}
-                        documentHash={signatureMetaData.hash} // Adicionamos o hash para o carimbo
+                        documentHash={signatureMetaData.documentHash} // Corrigido para documentHash
                     />
                     <Button title="Ver Evidência (Navegar)" onPress={() => navigation.navigate('Evidence', { documentId: docId })} color="#007BFF" />
                 </View>
@@ -381,7 +431,8 @@ export default function VerificationScreen({ route, navigation }) {
                         )}
                         {/* Botão de Iniciar Assinatura */}
                         <View style={{ marginTop: 30 }}>
-                            <Button title="1. Iniciar Assinatura e Enviar OTP" onPress={handleStartSignature} color={templateId ? '#007BFF' : '#6c757d'} disabled={!templateId || isLoading} />
+                             <Message message={status.message} type={status.type} />
+                             <Button title="1. Iniciar Assinatura e Enviar OTP" onPress={handleStartSignature} color={templateId ? '#007BFF' : '#6c757d'} disabled={!templateId || isLoading} />
                         </View>
                     </>
                 )}
@@ -416,7 +467,7 @@ export default function VerificationScreen({ route, navigation }) {
                             />
                         </View>
                         <View style={{ marginTop: 10 }}>
-                             <Button title="Voltar (Reenviar OTP)" onPress={() => setFlowStep(STEPS.PREPARE)} color="#bdc3c7" />
+                               <Button title="Voltar (Reenviar OTP)" onPress={() => setFlowStep(STEPS.PREPARE)} color="#bdc3c7" />
                         </View>
                     </View>
                 )}
@@ -426,7 +477,8 @@ export default function VerificationScreen({ route, navigation }) {
     };
 
     return (
-        <SafeAreaView style={styles.safeContainer}>
+        // ✅ CORREÇÃO: Usando SafeAreaView do 'react-native-safe-area-context'
+        <SafeAreaView style={styles.safeContainer}> 
             <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
                 {renderStepContent()}
             </ScrollView>
