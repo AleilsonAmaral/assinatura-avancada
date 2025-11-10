@@ -1,4 +1,4 @@
-// Arquivo: VerificationScreen.js (FINAL E FUNCIONAL)
+// Arquivo: VerificationScreen.js (FINAL E FUNCIONAL COM API REAL)
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -19,50 +19,69 @@ import {
 // 🚨 Dependências do Fluxo
 import * as DocumentPicker from 'expo-document-picker'; 
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
-import { Buffer } from 'buffer'; // Para Polyfill (necessário para Blob/fetch em RN)
+import { Buffer } from 'buffer';
 
-// --- Variáveis Globais (Polyfill e Constantes) ---
+// --- Variáveis Globais ---
 if (typeof global.Buffer === 'undefined') {
     global.Buffer = Buffer;
 }
-const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1';
+const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1'; // Caminho Base da API
 const SIGNER_NAME = 'Usuário de Teste'; 
-const TEST_OTP_CODE = '123456';
+
 
 // =========================================================
-// 🚨 SEÇÃO 1: MOCK SERVICE (MOCK MUDADO PARA O ESCOPO GLOBAL)
+// 🚨 SEÇÃO 1: FUNÇÕES DE SERVIÇO (INTEGRAÇÃO API REAL)
 // =========================================================
 
-const generateMockHash = (data) => {
+// Função auxiliar para simular o hash (Em produção, o backend fará isso)
+function generateMockHash(data) {
     const combinedData = data + new Date().getTime();
     return `sha256-${Math.random().toString(36).substring(2, 12)}${btoa(combinedData).substring(0, 10)}`; 
-};
+}
 
-// CORREÇÃO: Funções agora são const no escopo global do arquivo.
-const uploadSignature = async (intentionPayload, signerId) => { 
-    await new Promise(resolve => setTimeout(resolve, 1500)); 
-    if (signerId === 'ERROR_USER') throw new Error("Usuário não autorizado ou bloqueado.");
-    
-    const mockHash = generateMockHash(intentionPayload);
-    const mockValidationUrl = `https://seusistema.com/verifica/${signerId}/${mockHash.substring(0, 10)}`;
-    const now = new Date();
+// 1. INÍCIO DE ASSINATURA (SOLICITA OTP) - AGORA USA FETCH REAL
+async function uploadSignature(intentionPayload, signerId) { 
+    const response = await fetch(`${API_BASE_URL}/signature/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intentionPayload, signerId }),
+    });
 
-    return {
-        name: `Assinante Mockado ${signerId}`,
-        date: now.toISOString(),
-        validationUrl: mockValidationUrl,
-        hash: mockHash,
-    };
-};
-
-const validateOTP = async (otpCode, signatureHash) => {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    if (otpCode === TEST_OTP_CODE) { 
-        return { success: true, message: "Assinatura validada e selada." };
-    } else {
-        throw new Error(`Código OTP inválido. Tente o código de teste: ${TEST_OTP_CODE}.`);
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Erro de resposta da API.' }));
+        throw new Error(errorData.message || `Falha HTTP: ${response.status}. Falha ao enviar OTP.`);
     }
-};
+    
+    // A API real deve retornar os metadados
+    return response.json(); 
+}
+
+// 2. VALIDAÇÃO DE OTP - AGORA USA FETCH REAL
+async function validateOTP(otpCode, signatureHash) {
+    const response = await fetch(`${API_BASE_URL}/signature/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otpCode, signatureHash }),
+    });
+
+    const data = await response.json().catch(() => ({ message: 'Erro de resposta da API.' }));
+
+    if (!response.ok || data.success === false) {
+        throw new Error(data.message || `Validação OTP falhou. Verifique o código.`);
+    }
+    
+    return data;
+}
+
+// ⭐️ FUNÇÃO AUXILIAR: Converte URI local em um Blob (Usada APENAS para o PDF)
+async function uriToBlob(uri) {
+    try {
+        const response = await fetch(uri);
+        return await response.blob();
+    } catch (error) {
+        throw new Error("Falha ao preparar o arquivo para upload.");
+    }
+}
 
 
 // =========================================================
@@ -128,16 +147,6 @@ const stampStyles = StyleSheet.create({
 // =========================================================
 // 🎯 SEÇÃO 3: TELA PRINCIPAL (VerificationScreen.js)
 // =========================================================
-
-// ⭐️ FUNÇÃO AUXILIAR: Converte URI local em um Blob (Usada APENAS para o PDF)
-const uriToBlob = async (uri) => {
-    try {
-        const response = await fetch(uri);
-        return await response.blob();
-    } catch (error) {
-        throw new Error("Falha ao preparar o arquivo para upload.");
-    }
-};
 
 const STEPS = {
     PREPARE: 'PREPARE',
@@ -228,14 +237,15 @@ export default function VerificationScreen({ route, navigation }) {
         try {
             const intentionPayload = `Intent_Sign_${docId}_by_${signerId}`; 
             
-            // ✅ uploadSignature agora é acessível (Escopo Corrigido)
+            // ✅ CHAMADA REAL: Envia intenção e aguarda resposta
             const { name, date, validationUrl, hash } = await uploadSignature(
                 intentionPayload, signerId
             );
 
             setSignatureMetaData({ signerName: name, signatureDate: date, validationUrl, documentHash: hash });
             
-            Alert.alert("Sucesso", `Token de OTP enviado. Código de teste: ${TEST_OTP_CODE}.`);
+            // Mensagem atualizada para o usuário
+            Alert.alert("Sucesso", "Token de OTP enviado. Verifique seu telefone ou e-mail.");
             setFlowStep(STEPS.OTP);
             
         } catch (error) {
@@ -267,8 +277,8 @@ export default function VerificationScreen({ route, navigation }) {
         setStatus({ message: 'Verificando OTP e solicitando assinatura...', type: 'info' });
 
         try {
-            // 1. Validação OTP (Primeiro, sempre)
-            await validateOTP(otpCode, signatureMetaData.documentHash); // ✅ validateOTP agora é acessível
+            // 1. Validação OTP (CHAMADA REAL)
+            await validateOTP(otpCode, signatureMetaData.documentHash); 
             
             // 2. Continua com o Upload/Assinatura (Se o OTP for OK)
             const token = await AsyncStorage.getItem('jwtToken'); 
@@ -381,7 +391,7 @@ export default function VerificationScreen({ route, navigation }) {
                         <Text style={styles.label}>Código OTP Recebido:</Text>
                         <TextInput
                             style={styles.input} 
-                            placeholder={`Insira o Código OTP (${TEST_OTP_CODE})`}
+                            placeholder={`Insira o Código OTP (Será enviado pelo seu sistema)`}
                             value={otpCode}
                             onChangeText={setOtpCode}
                             keyboardType="numeric"

@@ -1,21 +1,56 @@
-// Arquivo: new-stable-mobile/RubricaScreen.js
+// Arquivo: RubricaScreen.js (FINAL COMPLETO E FUNCIONAL)
 
 import React, { useState } from 'react';
 import { 
-    View, 
+    StyleSheet, 
     Text, 
+    View, 
     Button, 
     Alert, 
     ActivityIndicator, 
     TextInput, 
-    StyleSheet,
-    KeyboardAvoidingView, // Melhoria de UX para teclado
+    KeyboardAvoidingView,
     Platform 
 } from 'react-native';
 
-// 🚨 IMPORTANTE: Crie estes arquivos em seus respectivos diretórios
-import SignatureCanvasContainer from './SignatureCanvasContainer.js'; 
-//import { uploadSignature, validateOTP } from './services/apiService'; 
+// Importações removidas ou ajustadas para o fluxo simplificado
+import SignatureCanvasContainer from './SignatureCanvasContainer.js'; // Componente Selo (se estiver em arquivo separado)
+// REMOVIDO: import { Buffer } from 'buffer'; // Não é mais necessário aqui
+// REMOVIDO: import * as DocumentPicker from 'expo-document-picker'; // Não é usado nesta tela
+
+// --- MOCKS INSERIDOS DIRETAMENTE PARA RESOLVER ReferenceError ---
+const TEST_OTP_CODE = '123456'; 
+
+// 1. Função Mock Auxiliar
+const generateMockHash = (data) => {
+    // Usamos Math.random e uma fatia da data para simular o hash
+    return `sha256-${Math.random().toString(36).substring(2, 12)}...`; 
+};
+
+// 2. MOCK uploadSignature (Simula a API)
+const uploadSignature = async (intentionPayload, signerId) => { 
+    await new Promise(resolve => setTimeout(resolve, 1500)); 
+    const mockHash = generateMockHash(intentionPayload);
+    const now = new Date();
+    return {
+        name: `Assinante Mockado ${signerId}`,
+        date: now.toISOString(),
+        validationUrl: 'https://seusistema.com/verifica/...',
+        hash: mockHash,
+    };
+};
+
+// 3. MOCK validateOTP (Simula a API)
+const validateOTP = async (otpCode, signatureHash) => {
+    await new Promise(resolve => setTimeout(resolve, 800));
+    if (otpCode === TEST_OTP_CODE) { 
+        return { success: true, message: "Assinatura validada e selada." };
+    } else {
+        throw new Error(`Código OTP inválido. Tente o código de teste: ${TEST_OTP_CODE}.`);
+    }
+};
+// --- FIM DOS MOCKS ---
+
 
 // --- Constantes de Estado ---
 const STEPS = {
@@ -28,23 +63,20 @@ const RubricaScreen = ({ signerId = 'USER_DEFAULT_ID', documentId = 'DOC_ABC_123
     const [step, setStep] = useState(STEPS.PREPARE);
     const [isLoading, setIsLoading] = useState(false);
     const [otpCode, setOtpCode] = useState('');
-    // Guarda os dados necessários para exibir o Carimbo de Validação
     const [signatureMetaData, setSignatureMetaData] = useState(null); 
 
     // 1. Função para INICIAR A ASSINATURA e avançar para o OTP
     const handleStartSignature = async () => {
         setIsLoading(true);
         try {
-            // Não há rubrica. O "Base64" é um placeholder para a intenção de assinar.
             const intentionPayload = `Intent_Sign_${documentId}_by_${signerId}`; 
             
-            // 🚨 Chama o serviço de upload para iniciar o processo no backend
+            // ✅ uploadSignature agora será encontrada no escopo superior
             const { name, date, validationUrl, hash } = await uploadSignature(
                 intentionPayload, 
                 signerId
             );
 
-            // 💡 Salva os dados que serão usados no Carimbo e no OTP
             setSignatureMetaData({ 
                 signerName: name, 
                 signatureDate: date, 
@@ -71,7 +103,7 @@ const RubricaScreen = ({ signerId = 'USER_DEFAULT_ID', documentId = 'DOC_ABC_123
         }
         setIsLoading(true);
         try {
-            // O documentHash é essencial para vincular o OTP à transação correta
+            // ✅ validateOTP agora será encontrada no escopo superior
             await validateOTP(otpCode, signatureMetaData.documentHash); 
             
             setStep(STEPS.CONFIRMED);
@@ -116,7 +148,7 @@ const RubricaScreen = ({ signerId = 'USER_DEFAULT_ID', documentId = 'DOC_ABC_123
                             Passo 2. Verificação de Identidade (OTP)
                         </Text>
                         <Text style={styles.infoText}>
-                            Insira o código de 6 dígitos que foi enviado para seu telefone ou e-mail.
+                            Insira o código de 6 dígitos que foi enviado para seu telefone ou e-mail. (Código de teste: 123456)
                         </Text>
                         <TextInput 
                             placeholder="Insira o Código OTP"
@@ -140,14 +172,20 @@ const RubricaScreen = ({ signerId = 'USER_DEFAULT_ID', documentId = 'DOC_ABC_123
                         <Text style={styles.infoText}>
                             O documento foi selado com sucesso.
                         </Text>
-                        {/* 💡 Exibe o Carimbo de Validação */}
+                        {/* Exibe o Carimbo de Validação */}
                         {signatureMetaData && (
-                            <SignatureCanvasConteiner
+                            <SignatureCanvasContainer
                                 signerName={signatureMetaData.signerName}
                                 signatureDate={signatureMetaData.signatureDate}
                                 validationUrl={signatureMetaData.validationUrl}
+                                documentHash={signatureMetaData.documentHash}
                             />
                         )}
+                        <Button 
+                            title="Voltar para Início" 
+                            onPress={() => setStep(STEPS.PREPARE)} // Reinicia o fluxo
+                            color="#28a745"
+                        />
                     </View>
                 );
             default:
@@ -156,7 +194,6 @@ const RubricaScreen = ({ signerId = 'USER_DEFAULT_ID', documentId = 'DOC_ABC_123
     };
 
     return (
-        // Garante que o input não seja obscurecido pelo teclado
         <KeyboardAvoidingView 
             style={styles.fullScreen}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
