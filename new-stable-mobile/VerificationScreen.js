@@ -41,20 +41,38 @@ function generateMockHash(data) {
     return `sha256-${Math.random().toString(36).substring(2, 12)}${btoa(combinedData).substring(0, 10)}`; 
 }
 
-// 1. INÍCIO DE ASSINATURA (SOLICITA OTP) - ENDPOINT CORRIGIDO
-async function uploadSignature(intentionPayload, signerId) { 
-    // 🎯 CORREÇÃO: Usando a rota que existe no backend
-    const response = await fetch(`${API_BASE_URL}/otp/generate`, { 
+// Funções de erro removidas daqui para simplificar a visualização do endpoint
+// mas mantidas no VerificationScreen.js final.
+
+// 1. INÍCIO DE ASSINATURA (SOLICITA OTP) - ENDPOINT, JWT E PAYLOAD CORRIGIDOS
+async function uploadSignature(signerId, docId) { 
+    
+    // 1. 🔒 AUTENTICAÇÃO: Obter o JWT
+    const token = await AsyncStorage.getItem('jwtToken');
+    const userEmail = await AsyncStorage.getItem('userEmail') || signerId; // Use o email real do usuário logado
+    
+    if (!token) {
+        throw new Error("Acesso negado. Usuário não autenticado. Por favor, faça login.");
+    }
+    
+    // 2. 🎯 ENDPOINT CORRIGIDO: Deve ser /auth/otp/generate
+    // 3. 🎯 PAYLOAD CORRIGIDO: Deve enviar 'method' e 'recipient'
+    const response = await fetch(`${API_BASE_URL}/auth/otp/generate`, { 
         method: 'POST',
-        // ATENÇÃO: A rota /otp/generate no backend espera 'method' e 'recipient', não 'intentionPayload'.
-        // Você precisará garantir que o body enviado aqui corresponda ao que o backend espera.
-        // MANTENDO A ESTRUTURA PARA ALINHAR À FUNÇÃO DO FRONT:
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intentionPayload, signerId }),
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`, // <<-- Envio do JWT
+        },
+        body: JSON.stringify({ 
+            signerId: signerId,
+            method: 'email', // Método de envio fixo para email
+            recipient: userEmail, // Email do usuário logado
+            documentId: docId // Opcional, para logs do backend
+        }),
     });
 
     if (!response.ok) {
-        // 🛠️ Tratamento de Erro Robusto
+        // 🛠️ Tratamento de Erro Robusto (Reintegrado aqui por ser uma função interna)
         let finalMessage = `Falha HTTP: ${response.status}. Falha ao enviar OTP.`;
         
         try {
@@ -75,23 +93,30 @@ async function uploadSignature(intentionPayload, signerId) {
         throw new Error(finalMessage);
     }
     
-    // A API real deve retornar os metadados do selo (name, date, validationUrl, hash)
-    // A rota /otp/generate provavelmente não retorna isso. O fluxo deve ser ajustado,
-    // mas por enquanto, vamos pegar a resposta para evitar quebrar o setSignatureMetaData
+    // O backend agora retorna 'message' e 'signerCpfFormatted'. Não retorna metadados de assinatura.
+    // Retornamos a resposta JSON e mocamos os metadados necessários no `handleStartSignature`.
     return response.json(); 
 }
 
-// 2. VALIDAÇÃO DE OTP - ENDPOINT VERIFICADO
+// 2. VALIDAÇÃO DE OTP - ENDPOINT VERIFICADO (Adicionando JWT se for necessário)
 async function validateOTP(otpCode, signatureHash) {
-    // ⚠️ ATENÇÃO: A rota /signature/validate TAMBÉM PODE ESTAR ERRADA (404)
-    // Se o próximo passo falhar com 404, esta rota deve ser ajustada para o caminho correto.
-    const response = await fetch(`${API_BASE_URL}/signature/validate`, { // Endpoint Atual
+    
+    const token = await AsyncStorage.getItem('jwtToken');
+    
+    // ⚠️ Atenção: Se /signature/validate também usa authMiddleware, ele precisa do token.
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    // ⚠️ MANTIDO: /signature/validate. Se houver 404, esta é a próxima a ser corrigida.
+    const response = await fetch(`${API_BASE_URL}/signature/validate`, { 
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify({ otpCode, signatureHash }),
     });
 
-    // 🛠️ Tratamento de erro robusto
+    // 🛠️ Tratamento de erro robusto (Mantido para brevidade)
     if (!response.ok) {
         let finalMessage = `Falha HTTP: ${response.status}. Validação OTP falhou.`;
         try {
@@ -125,6 +150,7 @@ async function uriToBlob(uri) {
 
 // =========================================================
 // 🎨 SEÇÃO 2: COMPONENTE DigitalStamp (Carimbo de Validação) - SEM ALTERAÇÕES
+// ... (stampStyles e SignatureCanvasContainer)
 // =========================================================
 
 const SignatureCanvasContainer = ({ 
@@ -133,7 +159,7 @@ const SignatureCanvasContainer = ({
     validationUrl,
     documentHash
 }) => {
-    // ... (Conteúdo da Seção 2 inalterado)
+    // ... (restante do código do componente)
     const handlePressValidation = () => {
         if (validationUrl) {
             Linking.openURL(validationUrl).catch(err => console.error("Falha ao abrir URL:", err));
@@ -185,7 +211,7 @@ const stampStyles = StyleSheet.create({
 
 
 // =========================================================
-// 🎯 SEÇÃO 3: TELA PRINCIPAL (VerificationScreen.js) - SEM ALTERAÇÕES NO FLUXO
+// 🎯 SEÇÃO 3: TELA PRINCIPAL (VerificationScreen.js)
 // =========================================================
 
 const STEPS = {
@@ -275,25 +301,28 @@ export default function VerificationScreen({ route, navigation }) {
 
         setIsLoading(true);
         try {
-            const intentionPayload = `Intent_Sign_${docId}_by_${signerId}`; 
             
-            // ✅ CHAMADA REAL: Envia intenção e aguarda resposta
-            // Nota: O backend /otp/generate espera dados específicos.
-            // Para fazer o fluxo funcionar sem quebrar a tela, mantemos a chamada.
-            const { name, date, validationUrl, hash } = await uploadSignature(
-                intentionPayload, signerId
-            );
-
-            setSignatureMetaData({ signerName: name, signatureDate: date, validationUrl, documentHash: hash });
+            // 🛠️ 1. CHAMADA AGORA ENVIA O JWT E O PAYLOAD CORRETO PARA /auth/otp/generate
+            const responseData = await uploadSignature(signerId, docId); 
+            
+            // 🛠️ 2. MOCA OS METADADOS (Hash e URL) para avançar a tela
+            const mockHash = generateMockHash(docId + signerId); 
+            
+            setSignatureMetaData({ 
+                signerName: SIGNER_NAME, 
+                signatureDate: new Date().toISOString(), 
+                validationUrl: 'https://seuapp.com/validar', // URL Mockada
+                documentHash: mockHash 
+            });
             
             // Mensagem atualizada para o usuário
-            Alert.alert("Sucesso", "Token de OTP enviado. Verifique seu telefone ou e-mail.");
+            Alert.alert("Sucesso", responseData.message || "Token de OTP enviado. Verifique seu telefone ou e-mail.");
+            setStatus({ message: responseData.message || `Token de OTP enviado.`, type: 'success' });
             setFlowStep(STEPS.OTP);
             
         } catch (error) {
             console.error("Erro ao iniciar assinatura:", error);
             Alert.alert("Erro", error.message || "Falha ao iniciar o processo de assinatura. Tente novamente.");
-            // 🛠️ Alteração: O error.message agora virá da API com mais detalhes
             setStatus({ message: `❌ ${error.message || 'Falha desconhecida.'}`, type: 'error' });
         } finally {
             setIsLoading(false);
