@@ -1,18 +1,9 @@
-// Arquivo: VerificationScreen.js (FINAL COM INTEGRAÇÃO DE API REAL E ENDPOINTS CORRIGIDOS)
+// Arquivo: VerificationScreen.js (FINAL COM FLUXO CORRIGIDO E JWT REMOVIDO DO PASSO 1)
 
 import React, { useState, useEffect } from 'react';
 import { 
-    StyleSheet, 
-    Text, 
-    View, 
-    TextInput, 
-    Button, 
-    ScrollView, 
-    Alert,
-    ActivityIndicator,
-    TouchableOpacity, 
-    Linking, 
-    Platform 
+    StyleSheet, Text, View, TextInput, Button, ScrollView, Alert,
+    ActivityIndicator, TouchableOpacity, Linking, Platform 
 } from 'react-native';
 
 // ✅ CORREÇÃO DE DEPRECIAÇÃO: Usando a importação de 'react-native-safe-area-context'
@@ -40,33 +31,25 @@ function generateMockHash(data) {
     return `sha256-${Math.random().toString(36).substring(2, 12)}${btoa(combinedData).substring(0, 10)}`; 
 }
 
-// Funções de erro removidas daqui para simplificar a visualização do endpoint
-// mas mantidas no VerificationScreen.js final.
-
-// 1. INÍCIO DE ASSINATURA (SOLICITA OTP) - ENDPOINT, JWT E PAYLOAD CORRIGIDOS
+// 1. INÍCIO DE ASSINATURA (SOLICITA OTP) - AGORA TRATADA COMO ROTA PÚBLICA
 async function uploadSignature(signerId, docId) { 
     
-    // 1. 🔒 AUTENTICAÇÃO: Obter o JWT
-    const token = await AsyncStorage.getItem('jwtToken');
-    const userEmail = await AsyncStorage.getItem('userEmail') || signerId; // Use o email real do usuário logado
+    // ⚠️ Removida toda lógica de busca/checagem/envio do JWT desta função.
+    // ESTA ROTA É PÚBLICA E GERA O TOKEN NA RESPOSTA.
+    const userEmail = await AsyncStorage.getItem('userEmail') || signerId; 
     
-    if (!token) {
-        throw new Error("Acesso negado. Usuário não autenticado. Por favor, faça login.");
-    }
-    
-    // 2. 🎯 ENDPOINT CORRIGIDO: Deve ser /auth/otp/generate
-    // 3. 🎯 PAYLOAD CORRIGIDO: Deve enviar 'method' e 'recipient'
-    const response = await fetch(`${API_BASE_URL}/auth/otp/generate`, { 
+    // 2. 🎯 ENDPOINT CORRIGIDO: Deve ser /auth/request-otp
+    const response = await fetch(`${API_BASE_URL}/auth/request-otp`, { 
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`, // <<-- Envio do JWT
+            // ❌ REMOVIDO: Authorization header não deve ser enviado para rota pública.
         },
         body: JSON.stringify({ 
             signerId: signerId,
-            method: 'email', // Método de envio fixo para email
-            recipient: userEmail, // Email do usuário logado
-            documentId: docId // Opcional, para logs do backend
+            method: 'email', 
+            recipient: userEmail, 
+            documentId: docId 
         }),
     });
 
@@ -76,7 +59,6 @@ async function uploadSignature(signerId, docId) {
         
         try {
             const isJson = response.headers.get('content-type')?.includes('application/json');
-            
             if (isJson) {
                 const errorData = await response.json();
                 finalMessage = errorData.message || finalMessage;
@@ -92,47 +74,22 @@ async function uploadSignature(signerId, docId) {
         throw new Error(finalMessage);
     }
     
-    // Retornamos a resposta JSON
-    return response.json(); 
-}
-
-// 2. VALIDAÇÃO DE OTP - ENDPOINT VERIFICADO (Adicionando JWT se for necessário)
-async function validateOTP(otpCode, signatureHash) {
+    const responseData = await response.json();
     
-    const token = await AsyncStorage.getItem('jwtToken');
-    
-    // ⚠️ ATENÇÃO: Se /signature/validate for uma rota inválida (404), o erro será aqui.
-    const headers = { 'Content-Type': 'application/json' };
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+    // 🔑 SALVA O JWT que a API retorna (Para ser usado no Passo 3)
+    if (responseData.token) {
+        await AsyncStorage.setItem('jwtToken', responseData.token);
+    } else {
+        console.warn('Backend não retornou o JWT após geração de OTP.');
     }
     
-    const response = await fetch(`${API_BASE_URL}/signature/validate`, { 
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify({ otpCode, signatureHash }),
-    });
-
-    // 🛠️ Tratamento de erro robusto (Mantido para brevidade)
-    if (!response.ok) {
-        let finalMessage = `Falha HTTP: ${response.status}. Validação OTP falhou.`;
-        try {
-            const isJson = response.headers.get('content-type')?.includes('application/json');
-            if (isJson) {
-                const errorData = await response.json();
-                finalMessage = errorData.message || finalMessage;
-            } else {
-                const rawText = await response.text();
-                finalMessage = `Falha HTTP ${response.status}. Resposta da API: ${rawText.substring(0, 100)}`;
-            }
-        } catch (e) {
-             console.error("Erro ao tentar ler resposta da API (OTP):", e);
-        }
-        throw new Error(finalMessage);
-    }
-    
-    return response.json();
+    return responseData; 
 }
+
+// 2. VALIDAÇÃO DE OTP - FUNÇÃO validateOTP REMOVIDA
+// O assinarDocumentoFinal usará a rota /document/sign para validação e assinatura.
+// A função original validateOTP foi removida do arquivo para simplificar o fluxo.
+
 
 // ⭐️ FUNÇÃO AUXILIAR: Converte URI local em um Blob
 async function uriToBlob(uri) {
@@ -147,7 +104,7 @@ async function uriToBlob(uri) {
 
 // =========================================================
 // 🎨 SEÇÃO 2: COMPONENTE DigitalStamp (Carimbo de Validação) - SEM ALTERAÇÕES
-// ... (Componentes de visualização)
+// ... (Visualização e Estilos)
 // =========================================================
 
 const SignatureCanvasContainer = ({ 
@@ -299,7 +256,7 @@ export default function VerificationScreen({ route, navigation }) {
         setIsLoading(true);
         try {
             
-            // 🛠️ 1. CHAMADA AGORA ENVIA O JWT E O PAYLOAD CORRETO PARA /auth/otp/generate
+            // 🛠️ 1. CHAMADA AGORA É PÚBLICA E RETORNA O JWT
             const responseData = await uploadSignature(signerId, docId); 
             
             // 🛠️ 2. MOCA OS METADADOS (Hash e URL) para avançar a tela
@@ -316,9 +273,7 @@ export default function VerificationScreen({ route, navigation }) {
             Alert.alert("Sucesso", responseData.message || "Token de OTP enviado. Verifique seu telefone ou e-mail.");
             setStatus({ message: responseData.message || `Token de OTP enviado.`, type: 'success' });
             
-            // 🛠️ NOVO: Pausa para garantir que o estado seja renderizado antes de qualquer falha (Prevenção de pulo)
-            await new Promise(resolve => setTimeout(resolve, 100)); 
-            
+            // 🚀 TRANSIÇÃO: O CAMPO DE OTP APARECERÁ
             setFlowStep(STEPS.OTP);
             
         } catch (error) {
@@ -357,13 +312,14 @@ export default function VerificationScreen({ route, navigation }) {
         setStatus({ message: 'Verificando OTP e solicitando assinatura...', type: 'info' });
 
         try {
-            // 1. Validação OTP (CHAMADA REAL)
-            // NOTA: Esta chamada não é estritamente necessária se o /document/sign validar o OTP
-            // Mas a mantemos para seguir o fluxo original.
-            await validateOTP(otpCode, signatureMetaData.documentHash); 
+            
+            // 🔑 1. OBTÉM O JWT (Que foi salvo no Passo 1)
+            const token = await AsyncStorage.getItem('jwtToken'); 
+            if (!token) {
+                 throw new Error("Sessão expirada. Faça login novamente.");
+            }
             
             // 2. Continua com o Upload/Assinatura (Se o OTP for OK)
-            const token = await AsyncStorage.getItem('jwtToken'); 
             const signerName = (await AsyncStorage.getItem('userEmail')) || SIGNER_NAME;
             const finalDocIdToSend = String(docId || '').trim(); 
             
@@ -388,10 +344,10 @@ export default function VerificationScreen({ route, navigation }) {
                 });
             }
 
-            // Requisição Final
+            // Requisição Final - O BACKEND FAZ A VALIDAÇÃO DO OTP AQUI
             const response = await fetch(`${API_BASE_URL}/document/sign`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }, 
+                headers: { 'Authorization': `Bearer ${token}` }, // <<-- PROTEÇÃO JWT
                 body: formData, 
             });
 
