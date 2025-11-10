@@ -25,7 +25,6 @@ import { Buffer } from 'buffer';
 if (typeof global.Buffer === 'undefined') {
     global.Buffer = Buffer;
 }
-// CORRIGIDO: Removendo o HTTPS duplicado e ajustando o URL base
 const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1'; 
 const SIGNER_NAME = 'Usuário de Teste'; 
 
@@ -57,9 +56,9 @@ async function uploadSignature(intentionPayload, signerId) {
     return response.json(); 
 }
 
-// 2. VALIDAÇÃO DE OTP - AGORA USA FETCH REAL (SEM CÓDIGO DE TESTE INTERNO)
+// 2. VALIDAÇÃO DE OTP - AGORA USA FETCH REAL (SEM LÓGICA DE TESTE INTERNA)
 async function validateOTP(otpCode, signatureHash) {
-    // 🛑 Esta função envia o OTP digitado pelo usuário para o backend
+    // 🛑 REMOVIDO: A lógica de teste `if (otpCode === TEST_OTP_CODE)`
     const response = await fetch(`${API_BASE_URL}/signature/validate`, { // Endpoint Real
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -97,7 +96,6 @@ const SignatureCanvasContainer = ({
     validationUrl,
     documentHash
 }) => {
-    // ... (Código do carimbo e estilos permanecem os mesmos) ...
     const handlePressValidation = () => {
         if (validationUrl) {
             Linking.openURL(validationUrl).catch(err => console.error("Falha ao abrir URL:", err));

@@ -1,4 +1,4 @@
-// Arquivo: RubricaScreen.js (FINAL COM INTEGRAÇÃO DE API REAL)
+// Arquivo: RubricaScreen.js (FINAL COMPLETO E CORRIGIDO - REMOVIDO MOCK)
 
 import React, { useState } from 'react';
 import { 
@@ -11,14 +11,17 @@ import {
     TextInput, 
     KeyboardAvoidingView,
     Platform,
-    SafeAreaView, // Mantido para o layout
+    SafeAreaView, 
     ScrollView,
     TouchableOpacity,
     Linking
 } from 'react-native';
+
+// Importações (Ajustadas)
+import SignatureCanvasContainer from './SignatureCanvasContainer.js'; 
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
-// --- Variáveis Globais (Mínimas para produção) ---
+// --- Variáveis Globais ---
 const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1';
 const SIGNER_NAME = 'Usuário de Teste'; 
 
@@ -27,7 +30,7 @@ const SIGNER_NAME = 'Usuário de Teste';
 // 🚨 SEÇÃO 1: FUNÇÕES DE SERVIÇO (INTEGRAÇÃO API REAL)
 // =========================================================
 
-// Função auxiliar para simular o hash (Backend fará este cálculo)
+// Função auxiliar para simular o hash (Em produção, o backend fará isso)
 function generateMockHash(data) {
     const combinedData = data + new Date().getTime();
     return `sha256-${Math.random().toString(36).substring(2, 12)}${btoa(combinedData).substring(0, 10)}`; 
@@ -35,7 +38,7 @@ function generateMockHash(data) {
 
 // 1. INÍCIO DE ASSINATURA (SOLICITA OTP) - AGORA USA FETCH REAL
 async function uploadSignature(intentionPayload, signerId) { 
-    const response = await fetch(`${API_BASE_URL}/signature/start`, {
+    const response = await fetch(`${API_BASE_URL}/signature/start`, { // Endpoint Real
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ intentionPayload, signerId }),
@@ -46,13 +49,13 @@ async function uploadSignature(intentionPayload, signerId) {
         throw new Error(errorData.message || `Falha HTTP: ${response.status}. Falha ao enviar OTP.`);
     }
     
-    // A API real deve retornar os metadados
     return response.json(); 
 }
 
 // 2. VALIDAÇÃO DE OTP - AGORA USA FETCH REAL (SEM LÓGICA DE TESTE INTERNA)
 async function validateOTP(otpCode, signatureHash) {
-    const response = await fetch(`${API_BASE_URL}/signature/validate`, {
+    // 🛑 REMOVIDO: Toda a lógica de teste hardcoded (if/else)
+    const response = await fetch(`${API_BASE_URL}/signature/validate`, { // Endpoint Real
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ otpCode, signatureHash }),
@@ -61,61 +64,28 @@ async function validateOTP(otpCode, signatureHash) {
     const data = await response.json().catch(() => ({ message: 'Erro de resposta da API.' }));
 
     if (!response.ok || data.success === false) {
+        // Agora, o erro virá do seu backend
         throw new Error(data.message || `Validação OTP falhou. Verifique o código.`);
     }
     
     return data;
 }
 
-// ⭐️ FUNÇÃO AUXILIAR: Converte URI local em um Blob (Se necessário para o upload, caso use este componente)
+// ⭐️ FUNÇÃO AUXILIAR: Converte URI local em um Blob (Para uploads)
 async function uriToBlob(uri) {
+    // Implementação real da conversão (se necessário para upload)
     const response = await fetch(uri);
     return await response.blob();
 }
 
+// --- FIM DA SEÇÃO DE FUNÇÕES ---
 
-// =========================================================
-// 🎨 SEÇÃO 2: COMPONENTE DigitalStamp (Carimbo de Validação) - NECESSÁRIO NO FLUXO
-// (O componente completo SignatureCanvasContainer deve ser importado se estiver em outro arquivo)
-// Este é um mock simples para garantir que a renderização funcione.
-const SignatureCanvasContainer = ({ signerName, signatureDate, validationUrl }) => {
-    const handlePressValidation = () => {
-        if (validationUrl) {
-            Linking.openURL(validationUrl).catch(err => Alert.alert("Erro", "Falha ao abrir URL."));
-        }
-    };
-    const formatDate = (isoDate) => {
-        try { return new Date(isoDate).toLocaleDateString('pt-BR'); } catch (e) { return 'Data Inválida'; }
-    };
-    
-    return (
-        <View style={stampStyles.container}>
-            <Text style={stampStyles.header}>Documento assinado digitalmente</Text>
-            <Text style={stampStyles.name}>{signerName.toUpperCase()}</Text>
-            <Text style={stampStyles.dataLabel}>Data: {formatDate(signatureDate)}</Text>
-            <TouchableOpacity onPress={handlePressValidation} style={stampStyles.linkContainer}>
-                <Text style={stampStyles.linkUrl}>Verifique aqui</Text>
-            </TouchableOpacity>
-        </View>
-    );
-};
-const stampStyles = StyleSheet.create({
-    container: { borderWidth: 2, borderColor: '#dc3545', padding: 15, marginVertical: 15, },
-    header: { fontSize: 13, fontWeight: 'bold', marginBottom: 5, color: '#343a40', textAlign: 'center', },
-    name: { fontSize: 16, fontWeight: '900', color: '#000', marginTop: 4, },
-    dataLabel: { fontSize: 12, marginTop: 4, color: '#6c757d', },
-    linkContainer: { marginTop: 8, borderTopWidth: 1, borderTopColor: '#ccc', },
-    linkUrl: { fontSize: 12, color: '#007bff', textDecorationLine: 'underline', fontWeight: 'bold', },
-});
 
-// =========================================================
-// 🎯 SEÇÃO 3: TELA PRINCIPAL (RubricaScreen.js)
-// =========================================================
-
+// --- Constantes de Estado ---
 const STEPS = {
-    PREPARE: 'PREPARE',
-    OTP: 'OTP',
-    CONFIRMED: 'CONFIRMED',
+    PREPARE: 'PREPARE', // Iniciar a assinatura (envio da intenção)
+    OTP: 'OTP',         // Validação com código
+    CONFIRMED: 'CONFIRMED', // Assinatura finalizada
 };
 
 const RubricaScreen = ({ signerId = 'USER_DEFAULT_ID', documentId = 'DOC_ABC_123' }) => {
@@ -130,7 +100,7 @@ const RubricaScreen = ({ signerId = 'USER_DEFAULT_ID', documentId = 'DOC_ABC_123
         try {
             const intentionPayload = `Intent_Sign_${documentId}_by_${signerId}`; 
             
-            // ✅ CHAMADA REAL
+            // ✅ CHAMADA REAL: Envia intenção e aguarda resposta
             const { name, date, validationUrl, hash } = await uploadSignature(
                 intentionPayload, 
                 signerId
