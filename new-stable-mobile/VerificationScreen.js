@@ -1,4 +1,4 @@
-// Arquivo: VerificationScreen.js (FINAL E FUNCIONAL COM API REAL)
+// Arquivo: VerificationScreen.js (FINAL COM INTEGRAÇÃO DE API REAL)
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -25,7 +25,8 @@ import { Buffer } from 'buffer';
 if (typeof global.Buffer === 'undefined') {
     global.Buffer = Buffer;
 }
-const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1'; // Caminho Base da API
+// CORRIGIDO: Removendo o HTTPS duplicado e ajustando o URL base
+const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1'; 
 const SIGNER_NAME = 'Usuário de Teste'; 
 
 
@@ -33,7 +34,7 @@ const SIGNER_NAME = 'Usuário de Teste';
 // 🚨 SEÇÃO 1: FUNÇÕES DE SERVIÇO (INTEGRAÇÃO API REAL)
 // =========================================================
 
-// Função auxiliar para simular o hash (Em produção, o backend fará isso)
+// Função auxiliar (mantida para evitar ReferenceError no generateMockHash do uploadSignature)
 function generateMockHash(data) {
     const combinedData = data + new Date().getTime();
     return `sha256-${Math.random().toString(36).substring(2, 12)}${btoa(combinedData).substring(0, 10)}`; 
@@ -41,7 +42,7 @@ function generateMockHash(data) {
 
 // 1. INÍCIO DE ASSINATURA (SOLICITA OTP) - AGORA USA FETCH REAL
 async function uploadSignature(intentionPayload, signerId) { 
-    const response = await fetch(`${API_BASE_URL}/signature/start`, {
+    const response = await fetch(`${API_BASE_URL}/signature/start`, { // Endpoint Real
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ intentionPayload, signerId }),
@@ -52,13 +53,14 @@ async function uploadSignature(intentionPayload, signerId) {
         throw new Error(errorData.message || `Falha HTTP: ${response.status}. Falha ao enviar OTP.`);
     }
     
-    // A API real deve retornar os metadados
+    // A API real deve retornar os metadados do selo (name, date, validationUrl, hash)
     return response.json(); 
 }
 
-// 2. VALIDAÇÃO DE OTP - AGORA USA FETCH REAL
+// 2. VALIDAÇÃO DE OTP - AGORA USA FETCH REAL (SEM CÓDIGO DE TESTE INTERNO)
 async function validateOTP(otpCode, signatureHash) {
-    const response = await fetch(`${API_BASE_URL}/signature/validate`, {
+    // 🛑 Esta função envia o OTP digitado pelo usuário para o backend
+    const response = await fetch(`${API_BASE_URL}/signature/validate`, { // Endpoint Real
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ otpCode, signatureHash }),
@@ -67,13 +69,14 @@ async function validateOTP(otpCode, signatureHash) {
     const data = await response.json().catch(() => ({ message: 'Erro de resposta da API.' }));
 
     if (!response.ok || data.success === false) {
+        // O erro agora virá do seu backend.
         throw new Error(data.message || `Validação OTP falhou. Verifique o código.`);
     }
     
     return data;
 }
 
-// ⭐️ FUNÇÃO AUXILIAR: Converte URI local em um Blob (Usada APENAS para o PDF)
+// ⭐️ FUNÇÃO AUXILIAR: Converte URI local em um Blob
 async function uriToBlob(uri) {
     try {
         const response = await fetch(uri);
@@ -94,6 +97,7 @@ const SignatureCanvasContainer = ({
     validationUrl,
     documentHash
 }) => {
+    // ... (Código do carimbo e estilos permanecem os mesmos) ...
     const handlePressValidation = () => {
         if (validationUrl) {
             Linking.openURL(validationUrl).catch(err => console.error("Falha ao abrir URL:", err));
