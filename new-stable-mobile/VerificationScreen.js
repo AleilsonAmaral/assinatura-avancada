@@ -35,7 +35,6 @@ const SIGNER_NAME = 'Usuário de Teste';
 // 🚨 SEÇÃO 1: FUNÇÕES DE SERVIÇO (INTEGRAÇÃO API REAL)
 // =========================================================
 
-// Função auxiliar (mantida para evitar ReferenceError no generateMockHash do uploadSignature)
 function generateMockHash(data) {
     const combinedData = data + new Date().getTime();
     return `sha256-${Math.random().toString(36).substring(2, 12)}${btoa(combinedData).substring(0, 10)}`; 
@@ -72,7 +71,7 @@ async function uploadSignature(signerId, docId) {
     });
 
     if (!response.ok) {
-        // 🛠️ Tratamento de Erro Robusto (Reintegrado aqui por ser uma função interna)
+        // 🛠️ Tratamento de Erro Robusto (MUITO IMPORTANTE AQUI)
         let finalMessage = `Falha HTTP: ${response.status}. Falha ao enviar OTP.`;
         
         try {
@@ -93,8 +92,7 @@ async function uploadSignature(signerId, docId) {
         throw new Error(finalMessage);
     }
     
-    // O backend agora retorna 'message' e 'signerCpfFormatted'. Não retorna metadados de assinatura.
-    // Retornamos a resposta JSON e mocamos os metadados necessários no `handleStartSignature`.
+    // Retornamos a resposta JSON
     return response.json(); 
 }
 
@@ -103,13 +101,12 @@ async function validateOTP(otpCode, signatureHash) {
     
     const token = await AsyncStorage.getItem('jwtToken');
     
-    // ⚠️ Atenção: Se /signature/validate também usa authMiddleware, ele precisa do token.
+    // ⚠️ ATENÇÃO: Se /signature/validate for uma rota inválida (404), o erro será aqui.
     const headers = { 'Content-Type': 'application/json' };
     if (token) {
         headers['Authorization'] = `Bearer ${token}`;
     }
     
-    // ⚠️ MANTIDO: /signature/validate. Se houver 404, esta é a próxima a ser corrigida.
     const response = await fetch(`${API_BASE_URL}/signature/validate`, { 
         method: 'POST',
         headers: headers,
@@ -150,7 +147,7 @@ async function uriToBlob(uri) {
 
 // =========================================================
 // 🎨 SEÇÃO 2: COMPONENTE DigitalStamp (Carimbo de Validação) - SEM ALTERAÇÕES
-// ... (stampStyles e SignatureCanvasContainer)
+// ... (Componentes de visualização)
 // =========================================================
 
 const SignatureCanvasContainer = ({ 
@@ -216,7 +213,7 @@ const stampStyles = StyleSheet.create({
 
 const STEPS = {
     PREPARE: 'PREPARE',
-    OTP: 'OTP',
+    OTP: 'OTP', // <<-- A tela com o input do OTP está aqui
     CONFIRMED: 'CONFIRMED',
 };
 
@@ -318,6 +315,10 @@ export default function VerificationScreen({ route, navigation }) {
             // Mensagem atualizada para o usuário
             Alert.alert("Sucesso", responseData.message || "Token de OTP enviado. Verifique seu telefone ou e-mail.");
             setStatus({ message: responseData.message || `Token de OTP enviado.`, type: 'success' });
+            
+            // 🛠️ NOVO: Pausa para garantir que o estado seja renderizado antes de qualquer falha (Prevenção de pulo)
+            await new Promise(resolve => setTimeout(resolve, 100)); 
+            
             setFlowStep(STEPS.OTP);
             
         } catch (error) {
@@ -342,6 +343,7 @@ export default function VerificationScreen({ route, navigation }) {
             return;
         }
         if (!otpCode || otpCode.length !== 6 || !docTitle) {
+            // ⚠️ ESTA VALIDAÇÃO ESTÁ CORRETA. O CAMPO OTP É OBRIGATÓRIO!
             setStatus({ message: "❌ O código OTP e o Título do Documento são obrigatórios.", type: 'error' });
             return;
         }
@@ -356,6 +358,8 @@ export default function VerificationScreen({ route, navigation }) {
 
         try {
             // 1. Validação OTP (CHAMADA REAL)
+            // NOTA: Esta chamada não é estritamente necessária se o /document/sign validar o OTP
+            // Mas a mantemos para seguir o fluxo original.
             await validateOTP(otpCode, signatureMetaData.documentHash); 
             
             // 2. Continua com o Upload/Assinatura (Se o OTP for OK)
@@ -368,7 +372,7 @@ export default function VerificationScreen({ route, navigation }) {
             // 3. Prepara o FormData
             const formData = new FormData();
             formData.append('signerId', signerId);
-            formData.append('submittedOTP', otpCode);
+            formData.append('submittedOTP', otpCode); // <<-- O OTP ENVIADO AQUI!
             formData.append('documentId', finalDocIdToSend); 
             formData.append('templateId', templateId); 
             formData.append('signerName', signerName);
