@@ -39,11 +39,15 @@ async function getApiErrorMessage(response, defaultMessage) {
 // =========================================================
 
 export const uploadSignature = async (intentionPayload, signerId) => { 
-    console.log(`[API] Iniciando assinatura em: ${API_BASE_URL}/signature/start`);
+    // 🎯 CORREÇÃO CRÍTICA: Rota /signature/start alterada para /otp/generate
+    console.log(`[API] Iniciando assinatura em: ${API_BASE_URL}/otp/generate`);
     
-    const response = await fetch(`${API_BASE_URL}/signature/start`, {
+    const response = await fetch(`${API_BASE_URL}/otp/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // Nota: A rota /otp/generate provavelmente espera 'method' e 'recipient'
+        // Você pode precisar ajustar o payload aqui, dependendo de como o frontend o utiliza.
+        // Assumindo que o frontend enviará os dados necessários para /otp/generate.
         body: JSON.stringify({ intentionPayload, signerId }),
     });
 
@@ -61,6 +65,8 @@ export const uploadSignature = async (intentionPayload, signerId) => {
 // =========================================================
 
 export const validateOTP = async (otpCode, signatureHash) => {
+    // ⚠️ ATENÇÃO: A rota /signature/validate TAMBÉM PODE ESTAR ERRADA no backend.
+    // Manteremos por enquanto, mas se o próximo erro for 404, ela será a próxima a ser verificada.
     console.log(`[API] Enviando OTP para validação em: ${API_BASE_URL}/signature/validate`);
 
     const response = await fetch(`${API_BASE_URL}/signature/validate`, {

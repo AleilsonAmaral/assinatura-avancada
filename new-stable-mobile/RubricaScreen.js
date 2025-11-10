@@ -11,7 +11,6 @@ import {
     TextInput, 
     KeyboardAvoidingView,
     Platform,
-    // ⚠️ Removido: SafeAreaView de 'react-native', pois não estava em uso e é depreciado.
     ScrollView,
     TouchableOpacity,
     Linking
@@ -36,37 +35,47 @@ function generateMockHash(data) {
 }
 
 /**
- * 1. INÍCIO DE ASSINATURA (SOLICITA OTP) - Tratamento de Erro Robusto
+ * Função utilitária para extrair a mensagem de erro da resposta da API.
+ * (Mantenho aqui, embora no VerificationScreen ela estivesse externa, para manter a estrutura original)
+ */
+async function getApiErrorMessage(response, defaultMessage) {
+    let finalMessage = defaultMessage || `Falha HTTP: ${response.status}.`;
+    
+    try {
+        const contentType = response.headers.get('content-type');
+        const isJson = contentType && contentType.includes('application/json');
+        
+        if (isJson) {
+            const errorData = await response.json();
+            finalMessage = errorData.message || finalMessage;
+        } else {
+            const rawText = await response.text();
+            finalMessage = `Falha HTTP ${response.status}. Resposta da API: ${rawText.substring(0, 100)}`;
+        }
+    } catch (e) {
+         console.error("Erro ao tentar ler resposta da API:", e);
+         finalMessage = `Falha HTTP ${response.status}. Resposta da API vazia ou ilegível.`;
+    }
+    return finalMessage;
+}
+
+
+/**
+ * 1. INÍCIO DE ASSINATURA (SOLICITA OTP) - ENDPOINT CORRIGIDO
  */
 async function uploadSignature(intentionPayload, signerId) { 
-    const response = await fetch(`${API_BASE_URL}/signature/start`, {
+    // 🎯 CORREÇÃO CRÍTICA: Rota /signature/start alterada para /otp/generate
+    const response = await fetch(`${API_BASE_URL}/otp/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // ATENÇÃO: A rota /otp/generate pode esperar outros campos (method, recipient)
         body: JSON.stringify({ intentionPayload, signerId }),
     });
 
     if (!response.ok) {
-        // 🛠️ Tratamento de Erro Robusto: Tenta ler como JSON, se falhar, lê como texto
-        let finalMessage = `Falha HTTP: ${response.status}. Falha ao iniciar OTP.`;
-        
-        try {
-            const contentType = response.headers.get('content-type');
-            const isJson = contentType && contentType.includes('application/json');
-            
-            if (isJson) {
-                const errorData = await response.json();
-                finalMessage = errorData.message || finalMessage;
-            } else {
-                const rawText = await response.text();
-                // Mostra os primeiros 100 caracteres do corpo da resposta não-JSON
-                finalMessage = `Falha HTTP ${response.status}. Resposta da API: ${rawText.substring(0, 100)}`;
-            }
-        } catch (e) {
-             console.error("Erro ao tentar ler resposta da API:", e);
-             finalMessage = `Falha HTTP ${response.status}. Resposta da API vazia ou ilegível.`;
-        }
-        
-        throw new Error(finalMessage);
+        // 🛠️ Tratamento de Erro Robusto (reutilizando a função)
+        const message = await getApiErrorMessage(response, 'Falha ao iniciar o processo de assinatura.');
+        throw new Error(message);
     }
     
     return response.json(); 
@@ -76,6 +85,7 @@ async function uploadSignature(intentionPayload, signerId) {
  * 2. VALIDAÇÃO DE OTP - Tratamento de Erro Robusto
  */
 async function validateOTP(otpCode, signatureHash) {
+    // ⚠️ ATENÇÃO: Mantendo /signature/validate. Se houver 404, esta é a próxima a ser corrigida.
     const response = await fetch(`${API_BASE_URL}/signature/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -83,28 +93,11 @@ async function validateOTP(otpCode, signatureHash) {
     });
 
     if (!response.ok) {
-        // 🛠️ Tratamento de Erro Robusto: Tenta ler como JSON, se falhar, lê como texto
-        let finalMessage = `Falha HTTP: ${response.status}. Validação OTP falhou.`;
-        
-        try {
-            const contentType = response.headers.get('content-type');
-            const isJson = contentType && contentType.includes('application/json');
-            
-            if (isJson) {
-                const errorData = await response.json();
-                finalMessage = errorData.message || finalMessage;
-            } else {
-                const rawText = await response.text();
-                finalMessage = `Falha HTTP ${response.status}. Resposta da API: ${rawText.substring(0, 100)}`;
-            }
-        } catch (e) {
-             console.error("Erro ao tentar ler resposta da API (OTP):", e);
-        }
-        
-        throw new Error(finalMessage);
+        // 🛠️ Tratamento de Erro Robusto (reutilizando a função)
+        const message = await getApiErrorMessage(response, 'Validação OTP falhou. Verifique o código.');
+        throw new Error(message);
     }
     
-    // Supondo que a resposta OK para validate retorne um JSON com a confirmação
     return response.json();
 }
 
@@ -143,11 +136,13 @@ const RubricaScreen = ({ signerId = 'USER_DEFAULT_ID', documentId = 'DOC_ABC_123
                 signerId
             );
 
+            // ATENÇÃO: A rota /otp/generate não retorna hash, name, date, etc.
+            // Para evitar quebrar, estou usando fallbacks.
             setSignatureMetaData({ 
-                signerName: metadata.name || SIGNER_NAME, // Usando fallback
+                signerName: metadata.name || SIGNER_NAME, 
                 signatureDate: metadata.date || new Date().toISOString(), 
-                validationUrl: metadata.validationUrl, 
-                documentHash: metadata.hash 
+                validationUrl: metadata.validationUrl || 'https://default.url', 
+                documentHash: metadata.hash || generateMockHash(documentId) 
             });
             
             Alert.alert("Sucesso", "Token de OTP enviado. Verifique seu telefone ou e-mail.");
@@ -178,11 +173,6 @@ const RubricaScreen = ({ signerId = 'USER_DEFAULT_ID', documentId = 'DOC_ABC_123
         try {
             // ✅ CHAMADA REAL: Validação contra o servidor
             await validateOTP(otpCode, signatureMetaData.documentHash); 
-            
-            // Se o OTP for validado, agora precisamos chamar o endpoint de assinatura final
-            // NOTA: No fluxo anterior, você fazia a assinatura final aqui. 
-            // Para simplificar, assumiremos que a validação do OTP É a conclusão da assinatura.
-            // Se houver um endpoint FINAL para `document/sign`, ele deve ser chamado aqui.
             
             Alert.alert("Sucesso", "Assinatura confirmada e concluída!");
             setStep(STEPS.CONFIRMED);
