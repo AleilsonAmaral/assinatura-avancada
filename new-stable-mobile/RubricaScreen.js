@@ -1,4 +1,4 @@
-// Arquivo: RubricaScreen.js (FINAL COMPLETO E FUNCIONAL)
+// Arquivo: RubricaScreen.js (FINAL COM INTEGRAÇÃO DE API REAL)
 
 import React, { useState } from 'react';
 import { 
@@ -10,53 +10,112 @@ import {
     ActivityIndicator, 
     TextInput, 
     KeyboardAvoidingView,
-    Platform 
+    Platform,
+    SafeAreaView, // Mantido para o layout
+    ScrollView,
+    TouchableOpacity,
+    Linking
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
-// Importações removidas ou ajustadas para o fluxo simplificado
-import SignatureCanvasContainer from './SignatureCanvasContainer.js'; // Componente Selo (se estiver em arquivo separado)
-// REMOVIDO: import { Buffer } from 'buffer'; // Não é mais necessário aqui
-// REMOVIDO: import * as DocumentPicker from 'expo-document-picker'; // Não é usado nesta tela
+// --- Variáveis Globais (Mínimas para produção) ---
+const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1';
+const SIGNER_NAME = 'Usuário de Teste'; 
 
-// --- MOCKS INSERIDOS DIRETAMENTE PARA RESOLVER ReferenceError ---
-const TEST_OTP_CODE = '123456'; 
 
-// 1. Função Mock Auxiliar
-const generateMockHash = (data) => {
-    // Usamos Math.random e uma fatia da data para simular o hash
-    return `sha256-${Math.random().toString(36).substring(2, 12)}...`; 
-};
+// =========================================================
+// 🚨 SEÇÃO 1: FUNÇÕES DE SERVIÇO (INTEGRAÇÃO API REAL)
+// =========================================================
 
-// 2. MOCK uploadSignature (Simula a API)
-const uploadSignature = async (intentionPayload, signerId) => { 
-    await new Promise(resolve => setTimeout(resolve, 1500)); 
-    const mockHash = generateMockHash(intentionPayload);
-    const now = new Date();
-    return {
-        name: `Assinante Mockado ${signerId}`,
-        date: now.toISOString(),
-        validationUrl: 'https://seusistema.com/verifica/...',
-        hash: mockHash,
-    };
-};
+// Função auxiliar para simular o hash (Backend fará este cálculo)
+function generateMockHash(data) {
+    const combinedData = data + new Date().getTime();
+    return `sha256-${Math.random().toString(36).substring(2, 12)}${btoa(combinedData).substring(0, 10)}`; 
+}
 
-// 3. MOCK validateOTP (Simula a API)
-const validateOTP = async (otpCode, signatureHash) => {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    if (otpCode === TEST_OTP_CODE) { 
-        return { success: true, message: "Assinatura validada e selada." };
-    } else {
-        throw new Error(`Código OTP inválido. Tente o código de teste: ${TEST_OTP_CODE}.`);
+// 1. INÍCIO DE ASSINATURA (SOLICITA OTP) - AGORA USA FETCH REAL
+async function uploadSignature(intentionPayload, signerId) { 
+    const response = await fetch(`${API_BASE_URL}/signature/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intentionPayload, signerId }),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Erro de resposta da API.' }));
+        throw new Error(errorData.message || `Falha HTTP: ${response.status}. Falha ao enviar OTP.`);
     }
+    
+    // A API real deve retornar os metadados
+    return response.json(); 
+}
+
+// 2. VALIDAÇÃO DE OTP - AGORA USA FETCH REAL (SEM LÓGICA DE TESTE INTERNA)
+async function validateOTP(otpCode, signatureHash) {
+    const response = await fetch(`${API_BASE_URL}/signature/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otpCode, signatureHash }),
+    });
+
+    const data = await response.json().catch(() => ({ message: 'Erro de resposta da API.' }));
+
+    if (!response.ok || data.success === false) {
+        throw new Error(data.message || `Validação OTP falhou. Verifique o código.`);
+    }
+    
+    return data;
+}
+
+// ⭐️ FUNÇÃO AUXILIAR: Converte URI local em um Blob (Se necessário para o upload, caso use este componente)
+async function uriToBlob(uri) {
+    const response = await fetch(uri);
+    return await response.blob();
+}
+
+
+// =========================================================
+// 🎨 SEÇÃO 2: COMPONENTE DigitalStamp (Carimbo de Validação) - NECESSÁRIO NO FLUXO
+// (O componente completo SignatureCanvasContainer deve ser importado se estiver em outro arquivo)
+// Este é um mock simples para garantir que a renderização funcione.
+const SignatureCanvasContainer = ({ signerName, signatureDate, validationUrl }) => {
+    const handlePressValidation = () => {
+        if (validationUrl) {
+            Linking.openURL(validationUrl).catch(err => Alert.alert("Erro", "Falha ao abrir URL."));
+        }
+    };
+    const formatDate = (isoDate) => {
+        try { return new Date(isoDate).toLocaleDateString('pt-BR'); } catch (e) { return 'Data Inválida'; }
+    };
+    
+    return (
+        <View style={stampStyles.container}>
+            <Text style={stampStyles.header}>Documento assinado digitalmente</Text>
+            <Text style={stampStyles.name}>{signerName.toUpperCase()}</Text>
+            <Text style={stampStyles.dataLabel}>Data: {formatDate(signatureDate)}</Text>
+            <TouchableOpacity onPress={handlePressValidation} style={stampStyles.linkContainer}>
+                <Text style={stampStyles.linkUrl}>Verifique aqui</Text>
+            </TouchableOpacity>
+        </View>
+    );
 };
-// --- FIM DOS MOCKS ---
+const stampStyles = StyleSheet.create({
+    container: { borderWidth: 2, borderColor: '#dc3545', padding: 15, marginVertical: 15, },
+    header: { fontSize: 13, fontWeight: 'bold', marginBottom: 5, color: '#343a40', textAlign: 'center', },
+    name: { fontSize: 16, fontWeight: '900', color: '#000', marginTop: 4, },
+    dataLabel: { fontSize: 12, marginTop: 4, color: '#6c757d', },
+    linkContainer: { marginTop: 8, borderTopWidth: 1, borderTopColor: '#ccc', },
+    linkUrl: { fontSize: 12, color: '#007bff', textDecorationLine: 'underline', fontWeight: 'bold', },
+});
 
+// =========================================================
+// 🎯 SEÇÃO 3: TELA PRINCIPAL (RubricaScreen.js)
+// =========================================================
 
-// --- Constantes de Estado ---
 const STEPS = {
-    PREPARE: 'PREPARE', // Iniciar a assinatura (envio da intenção)
-    OTP: 'OTP',         // Validação com código
-    CONFIRMED: 'CONFIRMED', // Assinatura finalizada
+    PREPARE: 'PREPARE',
+    OTP: 'OTP',
+    CONFIRMED: 'CONFIRMED',
 };
 
 const RubricaScreen = ({ signerId = 'USER_DEFAULT_ID', documentId = 'DOC_ABC_123' }) => {
@@ -71,7 +130,7 @@ const RubricaScreen = ({ signerId = 'USER_DEFAULT_ID', documentId = 'DOC_ABC_123
         try {
             const intentionPayload = `Intent_Sign_${documentId}_by_${signerId}`; 
             
-            // ✅ uploadSignature agora será encontrada no escopo superior
+            // ✅ CHAMADA REAL
             const { name, date, validationUrl, hash } = await uploadSignature(
                 intentionPayload, 
                 signerId
@@ -84,7 +143,7 @@ const RubricaScreen = ({ signerId = 'USER_DEFAULT_ID', documentId = 'DOC_ABC_123
                 documentHash: hash 
             });
             
-            Alert.alert("Sucesso", "Token de OTP enviado por SMS ou e-mail. Verifique a caixa de entrada.");
+            Alert.alert("Sucesso", "Token de OTP enviado. Verifique seu telefone ou e-mail.");
             setStep(STEPS.OTP);
             
         } catch (error) {
@@ -103,7 +162,7 @@ const RubricaScreen = ({ signerId = 'USER_DEFAULT_ID', documentId = 'DOC_ABC_123
         }
         setIsLoading(true);
         try {
-            // ✅ validateOTP agora será encontrada no escopo superior
+            // ✅ CHAMADA REAL: Validação contra o servidor
             await validateOTP(otpCode, signatureMetaData.documentHash); 
             
             setStep(STEPS.CONFIRMED);
@@ -148,7 +207,7 @@ const RubricaScreen = ({ signerId = 'USER_DEFAULT_ID', documentId = 'DOC_ABC_123
                             Passo 2. Verificação de Identidade (OTP)
                         </Text>
                         <Text style={styles.infoText}>
-                            Insira o código de 6 dígitos que foi enviado para seu telefone ou e-mail. (Código de teste: 123456)
+                            Insira o código de 6 dígitos que foi enviado para seu telefone ou e-mail.
                         </Text>
                         <TextInput 
                             placeholder="Insira o Código OTP"
@@ -172,13 +231,12 @@ const RubricaScreen = ({ signerId = 'USER_DEFAULT_ID', documentId = 'DOC_ABC_123
                         <Text style={styles.infoText}>
                             O documento foi selado com sucesso.
                         </Text>
-                        {/* Exibe o Carimbo de Validação */}
+                        {/* 💡 Exibe o Carimbo de Validação */}
                         {signatureMetaData && (
                             <SignatureCanvasContainer
                                 signerName={signatureMetaData.signerName}
                                 signatureDate={signatureMetaData.signatureDate}
                                 validationUrl={signatureMetaData.validationUrl}
-                                documentHash={signatureMetaData.documentHash}
                             />
                         )}
                         <Button 
