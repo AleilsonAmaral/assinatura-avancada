@@ -1,4 +1,4 @@
-// Arquivo: VerificationScreen.js (FINAL COM FLUXO CORRIGIDO E JWT REMOVIDO DO PASSO 1)
+// Arquivo: VerificationScreen.js (FINAL COMPLETO E ESTÁVEL)
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -6,13 +6,12 @@ import {
     ActivityIndicator, TouchableOpacity, Linking, Platform 
 } from 'react-native';
 
-// ✅ CORREÇÃO DE DEPRECIAÇÃO: Usando a importação de 'react-native-safe-area-context'
 import { SafeAreaView } from 'react-native-safe-area-context'; 
-
-// 🚨 Dependências do Fluxo
 import * as DocumentPicker from 'expo-document-picker'; 
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 import { Buffer } from 'buffer';
+
+import SignatureCanvasContainer from './SignatureCanvasContainer.js'; 
 
 // --- Variáveis Globais ---
 if (typeof global.Buffer === 'undefined') {
@@ -20,10 +19,10 @@ if (typeof global.Buffer === 'undefined') {
 }
 const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1'; 
 const SIGNER_NAME = 'Usuário de Teste'; 
-
+const JWT_TRANSACTION_KEY = 'jwtToken'; // Chave de segurança no AsyncStorage
 
 // =========================================================
-// 🚨 SEÇÃO 1: FUNÇÕES DE SERVIÇO (INTEGRAÇÃO API REAL)
+// 🚨 SEÇÃO 1: FUNÇÕES DE SERVIÇO (API)
 // =========================================================
 
 function generateMockHash(data) {
@@ -31,67 +30,6 @@ function generateMockHash(data) {
     return `sha256-${Math.random().toString(36).substring(2, 12)}${btoa(combinedData).substring(0, 10)}`; 
 }
 
-// 1. INÍCIO DE ASSINATURA (SOLICITA OTP) - AGORA TRATADA COMO ROTA PÚBLICA
-async function uploadSignature(signerId, docId) { 
-    
-    // ⚠️ Removida toda lógica de busca/checagem/envio do JWT desta função.
-    // ESTA ROTA É PÚBLICA E GERA O TOKEN NA RESPOSTA.
-    const userEmail = await AsyncStorage.getItem('userEmail') || signerId; 
-    
-    // 2. 🎯 ENDPOINT CORRIGIDO: Deve ser /auth/request-otp
-    const response = await fetch(`${API_BASE_URL}/auth/request-otp`, { 
-        method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json',
-            // ❌ REMOVIDO: Authorization header não deve ser enviado para rota pública.
-        },
-        body: JSON.stringify({ 
-            signerId: signerId,
-            method: 'email', 
-            recipient: userEmail, 
-            documentId: docId 
-        }),
-    });
-
-    if (!response.ok) {
-        // 🛠️ Tratamento de Erro Robusto (MUITO IMPORTANTE AQUI)
-        let finalMessage = `Falha HTTP: ${response.status}. Falha ao enviar OTP.`;
-        
-        try {
-            const isJson = response.headers.get('content-type')?.includes('application/json');
-            if (isJson) {
-                const errorData = await response.json();
-                finalMessage = errorData.message || finalMessage;
-            } else {
-                const rawText = await response.text();
-                finalMessage = `Falha HTTP ${response.status}. Resposta da API: ${rawText.substring(0, 100)}`;
-            }
-        } catch (e) {
-             console.error("Erro ao tentar ler resposta da API:", e);
-             finalMessage = `Falha HTTP ${response.status}. Resposta da API vazia ou ilegível.`;
-        }
-        
-        throw new Error(finalMessage);
-    }
-    
-    const responseData = await response.json();
-    
-    // 🔑 SALVA O JWT que a API retorna (Para ser usado no Passo 3)
-    if (responseData.token) {
-        await AsyncStorage.setItem('jwtToken', responseData.token);
-    } else {
-        console.warn('Backend não retornou o JWT após geração de OTP.');
-    }
-    
-    return responseData; 
-}
-
-// 2. VALIDAÇÃO DE OTP - FUNÇÃO validateOTP REMOVIDA
-// O assinarDocumentoFinal usará a rota /document/sign para validação e assinatura.
-// A função original validateOTP foi removida do arquivo para simplificar o fluxo.
-
-
-// ⭐️ FUNÇÃO AUXILIAR: Converte URI local em um Blob
 async function uriToBlob(uri) {
     try {
         const response = await fetch(uri);
@@ -101,67 +39,37 @@ async function uriToBlob(uri) {
     }
 }
 
+// 1. SOLICITA OTP E GERA JWT DE TRANSAÇÃO (ROTA PÚBLICA)
+async function requestOTP(signerId, docId, userEmail) { 
+    // ... (Lógica de API mantida)
+    const response = await fetch(`${API_BASE_URL}/auth/request-otp`, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signerId, method: 'email', recipient: userEmail, documentId: docId }),
+    });
 
-// =========================================================
-// 🎨 SEÇÃO 2: COMPONENTE DigitalStamp (Carimbo de Validação) - SEM ALTERAÇÕES
-// ... (Visualização e Estilos)
-// =========================================================
-
-const SignatureCanvasContainer = ({ 
-    signerName, 
-    signatureDate, 
-    validationUrl,
-    documentHash
-}) => {
-    // ... (restante do código do componente)
-    const handlePressValidation = () => {
-        if (validationUrl) {
-            Linking.openURL(validationUrl).catch(err => console.error("Falha ao abrir URL:", err));
-        }
-    };
-
-    const formatDate = (isoDate) => {
+    if (!response.ok) {
+        let finalMessage = `Falha HTTP: ${response.status}. Falha ao enviar OTP.`;
         try {
-            const date = new Date(isoDate);
-            return date.toLocaleString('pt-BR', {
-                day: '2-digit', month: '2-digit', year: 'numeric', 
-                hour: '2-digit', minute: '2-digit', second: '2-digit',
-                timeZoneName: 'short'
-            });
-        } catch (e) { return 'Data Inválida'; }
-    };
-
-    return (
-        <View style={stampStyles.container}>
-            <Text style={stampStyles.header}>Documento assinado digitalmente</Text>
-            <Text style={stampStyles.name}>{signerName.toUpperCase()}</Text>
-            <Text style={stampStyles.dataLabel}>
-                Data: <Text style={stampStyles.dataValue}>{formatDate(signatureDate)}</Text>
-            </Text>
-            <TouchableOpacity onPress={handlePressValidation} style={stampStyles.linkContainer}>
-                <Text style={stampStyles.linkText}>Verifique em</Text>
-                <Text style={stampStyles.linkUrl}>{validationUrl}</Text>
-            </TouchableOpacity>
-            {documentHash && (
-                <Text style={stampStyles.hashText}>
-                    Hash: {documentHash.substring(0, 8)}...
-                </Text>
-            )}
-        </View>
-    );
-};
-
-const stampStyles = StyleSheet.create({
-    container: { borderWidth: 2, borderColor: '#dc3545', padding: 15, backgroundColor: '#f8f9fa', borderRadius: 4, alignSelf: 'stretch', marginVertical: 15, },
-    header: { fontSize: 13, fontWeight: 'bold', marginBottom: 5, color: '#343a40', textAlign: 'center', },
-    name: { fontSize: 16, fontWeight: '900', color: '#000', marginTop: 4, },
-    dataLabel: { fontSize: 12, marginTop: 4, color: '#6c757d', },
-    dataValue: { fontWeight: 'bold', color: '#000', },
-    linkContainer: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#ccc', },
-    linkText: { fontSize: 11, color: '#6c757d', },
-    linkUrl: { fontSize: 12, color: '#007bff', textDecorationLine: 'underline', fontWeight: 'bold', },
-    hashText: { fontSize: 10, color: '#6c757d', marginTop: 4, }
-});
+            const isJson = response.headers.get('content-type')?.includes('application/json');
+            const errorData = isJson ? await response.json() : await response.text();
+            finalMessage = isJson ? (errorData.message || finalMessage) : finalMessage;
+        } catch (e) {
+             finalMessage = `Falha HTTP ${response.status}. Resposta da API ilegível.`;
+        }
+        throw new Error(finalMessage);
+    }
+    
+    const responseData = await response.json();
+    
+    if (responseData.token) {
+        await AsyncStorage.setItem(JWT_TRANSACTION_KEY, responseData.token);
+    } else {
+        console.warn('Backend não retornou o JWT após geração de OTP.');
+    }
+    
+    return responseData; 
+}
 
 
 // =========================================================
@@ -170,7 +78,7 @@ const stampStyles = StyleSheet.create({
 
 const STEPS = {
     PREPARE: 'PREPARE',
-    OTP: 'OTP', // <<-- A tela com o input do OTP está aqui
+    OTP: 'OTP', 
     CONFIRMED: 'CONFIRMED',
 };
 
@@ -185,7 +93,8 @@ const Message = ({ message, type }) => {
 };
 
 
-export default function VerificationScreen({ route, navigation }) {
+// 🚩 CORREÇÃO: Removido o 'export default' para usar a exportação no final (Linha ~97)
+function VerificationScreen({ route, navigation }) {
     
     // PARAMS
     const signerId = route.params?.signerId || 'USER_DEFAULT_ID';
@@ -199,9 +108,10 @@ export default function VerificationScreen({ route, navigation }) {
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState({ message: '', type: '', data: null }); 
     const [flowStep, setFlowStep] = useState(STEPS.PREPARE);
-    const [signatureMetaData, setSignatureMetaData] = useState(null); // Dados para o Carimbo
+    const [signatureMetaData, setSignatureMetaData] = useState(null); 
+    const [otpSent, setOtpSent] = useState(false); // CRÍTICO: Controla se o OTP já foi solicitado
 
-    // --- Efeitos e Lógica de Estado ---
+    // --- Efeitos e Lógica de Estado (Mantidos) ---
     useEffect(() => {
         setUploadedDocumentUri(null); 
         if (templateId === 'template-servico') {
@@ -216,65 +126,52 @@ export default function VerificationScreen({ route, navigation }) {
         }
     }, [templateId]);
     
-    // Variáveis de Controle
-    const isDocumentSelected = !!templateId; 
-    const isTitleEntered = isDocumentSelected && docTitle.trim().length > 0 && docTitle !== 'Clique em Buscar PDF...';
-
-    // ⭐️ FUNÇÃO PARA ABRIR O SELETOR DE ARQUIVOS (PDF)
+    // ⭐️ FUNÇÃO PARA ABRIR O SELETOR DE ARQUIVOS (Mantida)
     const pickDocument = async () => {
-        // ... (Lógica de pickDocument)
-        try {
-            const result = await DocumentPicker.getDocumentAsync({
-                type: 'application/pdf', 
-                copyToCacheDirectory: true,
-            });
-
-            if (result.canceled === false) {
-                const selectedUri = result.assets[0].uri;
-                const selectedName = result.assets[0].name;
-
-                setUploadedDocumentUri(selectedUri);
-                setDocTitle(selectedName); 
-                setStatus({ message: `✅ Arquivo ${selectedName} carregado.`, type: 'success' });
-            } else {
-                setStatus({ message: "Seleção de arquivo cancelada.", type: 'info' });
-            }
-        } catch (error) {
-            console.error("Erro ao buscar documento:", error);
-            Alert.alert("Erro Nativo", "Falha ao abrir seletor de arquivos. Verifique o EAS Build.");
-        }
+         try {
+              const result = await DocumentPicker.getDocumentAsync({
+                  type: 'application/pdf', copyToCacheDirectory: true,
+              });
+     
+              if (result.canceled === false) {
+                  const { uri: selectedUri, name: selectedName } = result.assets[0];
+                  setUploadedDocumentUri(selectedUri);
+                  setDocTitle(selectedName); 
+                  setStatus({ message: `✅ Arquivo ${selectedName} carregado.`, type: 'success' });
+              } else {
+                  setStatus({ message: "Seleção de arquivo cancelada.", type: 'info' });
+              }
+         } catch (error) {
+              Alert.alert("Erro Nativo", "Falha ao abrir seletor de arquivos.");
+         }
     };
-    
-    // 1. INICIAR A ASSINATURA e avançar para o OTP (Simula a intenção)
+
+    // 1. INICIAR A ASSINATURA e avançar para o OTP (Gera JWT)
     const handleStartSignature = async () => {
-        // 🚨 VALIDAÇÃO: Pelo menos um tipo de documento deve ser selecionado.
         if (!templateId) {
-             setStatus({ message: "❌ Selecione o tipo de documento (Padrão ou Upload).", type: 'error' });
+             setStatus({ message: "❌ Selecione o tipo de documento.", type: 'error' });
              return;
         }
 
         setIsLoading(true);
         try {
+            const userEmail = await AsyncStorage.getItem('userEmail') || signerId; 
             
-            // 🛠️ 1. CHAMADA AGORA É PÚBLICA E RETORNA O JWT
-            const responseData = await uploadSignature(signerId, docId); 
+            // CHAMA API E SALVA JWT NO ASYNCSTORAGE
+            const responseData = await requestOTP(signerId, docId, userEmail); 
             
-            // 🛠️ 2. MOCA OS METADADOS (Hash e URL) para avançar a tela
+            // MOCA METADADOS
             const mockHash = generateMockHash(docId + signerId); 
-            
             setSignatureMetaData({ 
-                signerName: SIGNER_NAME, 
-                signatureDate: new Date().toISOString(), 
-                validationUrl: 'https://seuapp.com/validar', // URL Mockada
-                documentHash: mockHash 
+                signerName: SIGNER_NAME, signatureDate: new Date().toISOString(), 
+                validationUrl: 'https://seuapp.com/validar', documentHash: mockHash 
             });
             
-            // Mensagem atualizada para o usuário
             Alert.alert("Sucesso", responseData.message || "Token de OTP enviado. Verifique seu telefone ou e-mail.");
             setStatus({ message: responseData.message || `Token de OTP enviado.`, type: 'success' });
             
-            // 🚀 TRANSIÇÃO: O CAMPO DE OTP APARECERÁ
-            setFlowStep(STEPS.OTP);
+            setOtpSent(true); 
+            setFlowStep(STEPS.OTP); // Avança para a tela do Passo 2 (Input OTP)
             
         } catch (error) {
             console.error("Erro ao iniciar assinatura:", error);
@@ -286,23 +183,16 @@ export default function VerificationScreen({ route, navigation }) {
     };
 
 
-    // 2. CONFIRMAÇÃO DO OTP E UPLOAD FINAL DO DOCUMENTO
+    // 2. CONFIRMAÇÃO DO OTP E UPLOAD FINAL DO DOCUMENTO (Usa JWT e OTP)
     const assinarDocumentoFinal = async () => {
         
-        // 🚨 O documento só pode ser assinado na etapa OTP
         if (flowStep !== STEPS.OTP) return;
 
         // VALIDAÇÕES
-        if (templateId === 'upload' && !uploadedDocumentUri) {
-            setStatus({ message: "❌ Selecione um arquivo PDF para upload.", type: 'error' });
-            return;
-        }
         if (!otpCode || otpCode.length !== 6 || !docTitle) {
-            // ⚠️ ESTA VALIDAÇÃO ESTÁ CORRETA. O CAMPO OTP É OBRIGATÓRIO!
-            setStatus({ message: "❌ O código OTP e o Título do Documento são obrigatórios.", type: 'error' });
-            return;
+             setStatus({ message: "❌ O código OTP e o Título do Documento são obrigatórios.", type: 'error' });
+             return;
         }
-        // Validação adicional de hash
         if (!signatureMetaData || !signatureMetaData.documentHash) {
              setStatus({ message: "❌ Hash de documento ausente. Reinicie a assinatura.", type: 'error' });
              return;
@@ -313,67 +203,70 @@ export default function VerificationScreen({ route, navigation }) {
 
         try {
             
-            // 🔑 1. OBTÉM O JWT (Que foi salvo no Passo 1)
-            const token = await AsyncStorage.getItem('jwtToken'); 
+            // 🔑 1. OBTÉM O JWT (CRÍTICO: Fonte da falha de autorização 401)
+            const token = await AsyncStorage.getItem(JWT_TRANSACTION_KEY); 
+            
             if (!token) {
-                 throw new Error("Sessão expirada. Faça login novamente.");
+                 throw new Error("Sessão expirada. Token de transação ausente. Reinicie o Passo 1.");
             }
             
-            // 2. Continua com o Upload/Assinatura (Se o OTP for OK)
-            const signerName = (await AsyncStorage.getItem('userEmail')) || SIGNER_NAME;
+            // 2. Prepara o FormData
             const finalDocIdToSend = String(docId || '').trim(); 
             
-            if (finalDocIdToSend.length === 0) throw new Error("ID do Documento ausente.");
-            
-            // 3. Prepara o FormData
             const formData = new FormData();
             formData.append('signerId', signerId);
-            formData.append('submittedOTP', otpCode); // <<-- O OTP ENVIADO AQUI!
+            formData.append('submittedOTP', otpCode); 
             formData.append('documentId', finalDocIdToSend); 
             formData.append('templateId', templateId); 
-            formData.append('signerName', signerName);
+            formData.append('signerName', (await AsyncStorage.getItem('userEmail')) || SIGNER_NAME);
             formData.append('contractTitle', docTitle); 
             
-            // 🚨 SÓ ANEXA O PDF SE FOR FLUXO DE UPLOAD
+            // 🚨 ANEXO DE ARQUIVOS (Onde o Multer/400 pode falhar)
             if (templateId === 'upload' && uploadedDocumentUri) {
-                const documentBlob = await uriToBlob(uploadedDocumentUri); 
-                formData.append('documentFile', {
-                    uri: uploadedDocumentUri,
-                    name: docTitle,
-                    type: 'application/pdf',
-                });
+                 formData.append('documentFile', {
+                     uri: uploadedDocumentUri,
+                     name: docTitle,
+                     type: 'application/pdf',
+                 });
             }
+            // Envia um campo vazio para a Rubrica (signatureImage) para evitar erro 400 do Multer
+            formData.append('signatureImage', ''); 
 
-            // Requisição Final - O BACKEND FAZ A VALIDAÇÃO DO OTP AQUI
+            // Requisição Final - PROTEÇÃO JWT (Onde o authMiddleware é ativado)
             const response = await fetch(`${API_BASE_URL}/document/sign`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }, // <<-- PROTEÇÃO JWT
-                body: formData, 
+                 method: 'POST',
+                 // ✅ CORREÇÃO: Envia o JWT no HEADER
+                 headers: { 'Authorization': `Bearer ${token}` }, 
+                 body: formData, // NENHUM Content-Type manual!
             });
 
-            // Tratamento de resposta
-            let data;
-            try { data = await response.json(); } catch (jsonError) { data = { message: `Erro HTTP ${response.status}. Servidor inacessível.` }; }
-
-            if (response.ok) {
-                setSignatureMetaData(prev => ({ ...prev, 
-                    signerName: data.signedBy || SIGNER_NAME,
-                    signatureDate: data.signedAt || new Date().toISOString(),
-                    validationUrl: data.validationUrl || prev.validationUrl,
-                    documentHash: data.finalHash || prev.documentHash
-                }));
-                setStatus({ message: "✅ Assinatura concluída. Documento selado.", type: 'success' });
-                setFlowStep(STEPS.CONFIRMED); // Não navega, apenas atualiza a tela
-            } else {
-                setStatus({ message: `❌ Falha na Assinatura: ${data.message || 'Erro desconhecido.'}`, type: 'error' });
+            // 3. TRATAMENTO DE ERRO ROBUSTO
+            if (!response.ok) {
+                 let data = {};
+                 try { data = await response.json(); } catch {}
+                 
+                 // 🎯 Retorna o erro real do backend (401 OTP, 403 Autorização, etc.)
+                 throw new Error(data.error || data.message || `Falha HTTP ${response.status}. Verifique token/payload.`);
             }
 
+            // SUCESSO
+            await AsyncStorage.removeItem(JWT_TRANSACTION_KEY); // Limpa o token
+            const data = await response.json(); 
+            
+            setSignatureMetaData(prev => ({ ...prev, 
+                 signerName: data.signedBy || SIGNER_NAME,
+                 signatureDate: data.signedAt || new Date().toISOString(),
+                 validationUrl: data.validationUrl || prev.validationUrl,
+                 documentHash: data.finalHash || prev.documentHash
+            }));
+            setStatus({ message: "✅ Assinatura concluída. Documento selado.", type: 'success' });
+            setFlowStep(STEPS.CONFIRMED); 
+
         } catch (error) {
-            console.error("Erro na requisição de assinatura:", error);
-            // Se falhar no OTP ou no sign, o erro.message será detalhado
-            setStatus({ message: error.message || "Erro de Conexão. Tente novamente.", type: 'error' });
+             console.error("Erro na requisição de assinatura:", error);
+             setStatus({ message: `❌ ${error.message || "Erro de Conexão. Tente novamente."}`, type: 'error' });
         } finally {
-            setIsLoading(false);
+             setIsLoading(false);
         }
     };
 
@@ -381,38 +274,37 @@ export default function VerificationScreen({ route, navigation }) {
     // --- Renderização ---
     const renderStepContent = () => {
         if (isLoading) {
-            return (
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#007BFF" />
-                    <Text style={styles.loadingText}>Processando...</Text>
-                </View>
-            );
-        }
-
-        if (flowStep === STEPS.CONFIRMED && signatureMetaData) {
-            return (
-                <View style={styles.card}>
-                    <Text style={styles.successHeader}>✅ Assinatura Digital Concluída!</Text>
-                    <Text style={styles.infoText}>O documento foi selado com sucesso e está disponível para download.</Text>
-                    <SignatureCanvasContainer
-                        signerName={signatureMetaData.signerName}
-                        signatureDate={signatureMetaData.signatureDate}
-                        validationUrl={signatureMetaData.validationUrl}
-                        documentHash={signatureMetaData.documentHash} // Corrigido para documentHash
-                    />
-                    <Button title="Ver Evidência (Navegar)" onPress={() => navigation.navigate('Evidence', { documentId: docId })} color="#007BFF" />
-                </View>
-            );
+             return (
+                 <View style={styles.loadingContainer}>
+                     <ActivityIndicator size="large" color="#007BFF" />
+                     <Text style={styles.loadingText}>Processando...</Text>
+                 </View>
+             );
         }
         
-        // Renderiza a Interface de Input/Assinatura (PREPARE e OTP)
+        if (flowStep === STEPS.CONFIRMED && signatureMetaData) {
+             return (
+                 <View style={styles.card}>
+                     <Text style={styles.successHeader}>✅ Assinatura Digital Concluída!</Text>
+                     <Text style={styles.infoText}>O documento foi selado com sucesso e está disponível para download.</Text>
+                     <SignatureCanvasContainer
+                         signerName={signatureMetaData.signerName}
+                         signatureDate={signatureMetaData.signatureDate}
+                         validationUrl={signatureMetaData.validationUrl}
+                         documentHash={signatureMetaData.documentHash}
+                     />
+                     {navigation && <Button title="Ver Evidência (Navegar)" onPress={() => navigation.navigate('Evidence', { documentId: docId })} color="#007BFF" />}
+                 </View>
+             );
+        }
+        
         return (
             <View style={styles.card}>
                 <Text style={styles.header}>
                     {flowStep === STEPS.PREPARE ? 'Passo 1: Confirmação de Intenção' : 'Passo 2: Verificação OTP e Finalização'}
                 </Text>
                 
-                {/* 1. SELETOR DE DOCUMENTOS */}
+                {/* 1. SELETOR DE DOCUMENTOS / BOTÃO DE ENVIO OTP */}
                 {flowStep === STEPS.PREPARE && (
                     <>
                         <Text style={styles.label}>Selecione o Documento:</Text>
@@ -425,9 +317,9 @@ export default function VerificationScreen({ route, navigation }) {
                                 <Button title={uploadedDocumentUri ? `✅ PDF: ${docTitle}` : "BUSCAR ARQUIVO PDF"} onPress={pickDocument} color={uploadedDocumentUri ? '#28a745' : '#FF9800'} disabled={isLoading} />
                             </View>
                         )}
-                        {/* Botão de Iniciar Assinatura */}
                         <View style={{ marginTop: 30 }}>
                              <Message message={status.message} type={status.type} />
+                             {/* Botão Principal: Inicia Transação e Avança para o Passo 2 (OTP) */}
                              <Button title="1. Iniciar Assinatura e Enviar OTP" onPress={handleStartSignature} color={templateId ? '#007BFF' : '#6c757d'} disabled={!templateId || isLoading} />
                         </View>
                     </>
@@ -437,15 +329,20 @@ export default function VerificationScreen({ route, navigation }) {
                 {/* 2. CÓDIGO OTP (Habilitado após o Passo 1) */}
                 {flowStep === STEPS.OTP && (
                     <View style={{ marginTop: 20 }}>
+                         {/* 🚩 CORREÇÃO: Informação de status Pós-Envio */}
+                         <Text style={styles.infoText}>
+                             {otpSent ? 'Código enviado com sucesso. Insira o código abaixo:' : 'Aguardando envio do OTP...'}
+                         </Text>
+
                         <Text style={styles.label}>Código OTP Recebido:</Text>
                         <TextInput
                             style={styles.input} 
-                            placeholder={`Insira o Código OTP (Será enviado pelo seu sistema)`}
+                            placeholder={`Insira o Código OTP (6 dígitos)`}
                             value={otpCode}
                             onChangeText={setOtpCode}
                             keyboardType="numeric"
                             maxLength={6}
-                            editable={!isLoading} // Desabilita input durante o loading
+                            editable={!isLoading}
                         />
                         <Text style={styles.label}>Título do Documento:</Text>
                         <TextInput style={styles.input} value={docTitle} onChangeText={setDocTitle} editable={!isLoading} />
@@ -464,7 +361,8 @@ export default function VerificationScreen({ route, navigation }) {
                             />
                         </View>
                         <View style={{ marginTop: 10 }}>
-                               <Button title="Voltar (Reenviar OTP)" onPress={() => setFlowStep(STEPS.PREPARE)} color="#bdc3c7" disabled={isLoading} />
+                             {/* Volta ao PREPARE, onde o botão de reenvio implícito está (handleStartSignature) */}
+                             <Button title="Voltar (Reenviar OTP)" onPress={() => setFlowStep(STEPS.PREPARE)} color="#bdc3c7" disabled={isLoading} />
                         </View>
                     </View>
                 )}
@@ -474,7 +372,6 @@ export default function VerificationScreen({ route, navigation }) {
     };
 
     return (
-        // ✅ CORREÇÃO: Usando SafeAreaView do 'react-native-safe-area-context'
         <SafeAreaView style={styles.safeContainer}> 
             <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
                 {renderStepContent()}
@@ -483,6 +380,7 @@ export default function VerificationScreen({ route, navigation }) {
     );
 }
 
+// ... (Styles mantidos)
 const styles = StyleSheet.create({
     safeContainer: { flex: 1, backgroundColor: '#f8f9fa', },
     scrollContainer: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40, },
@@ -496,3 +394,5 @@ const styles = StyleSheet.create({
     loadingText: { marginTop: 10, color: '#007BFF', },
     infoText: { fontSize: 16, marginBottom: 15, color: '#6c757d', textAlign: 'center' }
 });
+
+export default VerificationScreen;
