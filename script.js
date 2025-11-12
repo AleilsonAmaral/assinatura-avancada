@@ -1,7 +1,7 @@
 const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1';
 const SIGNER_NAME = "Usuário de Teste"; 
 let globalSignerId = ''; 
-let canvas, ctx;       
+// Variáveis de Canvas/Contexto removidas
 
 
 // FUNÇÕES UTILITÁRIAS (LOGS E MENSAGENS)
@@ -42,16 +42,16 @@ function updateUIBasedOnLoginState() {
     const loginSection = document.getElementById('loginSection');
     const registerSection = document.getElementById('registerSection');
     const userNameDisplay = document.getElementById('userNameDisplay');
-    const evidenceContainer = document.getElementById('evidenceContainer'); 
+    const evidenceContainer = document.getElementById('evidenceContainer'); 
 
     if (token) {
         // ESTADO LOGADO
-        authContainer.classList.remove('hidden'); // Mantém o container para mostrar o perfil
+        authContainer.classList.remove('hidden'); 
         loginSection.classList.add('hidden');
         registerSection.classList.add('hidden');
         userProfileSection.classList.remove('hidden'); 
         signatureContainer.classList.remove('hidden'); 
-        evidenceContainer.classList.remove('hidden'); // MOSTRA EVIDÊNCIA
+        evidenceContainer.classList.remove('hidden'); 
         
         const userEmail = localStorage.getItem('userEmail') || 'Usuário';
         userNameDisplay.textContent = userEmail.split('@')[0];
@@ -60,13 +60,12 @@ function updateUIBasedOnLoginState() {
         authContainer.classList.remove('hidden');
         signatureContainer.classList.add('hidden'); 
         userProfileSection.classList.add('hidden');
-        evidenceContainer.classList.add('hidden'); // ESCONDE EVIDÊNCIA
+        evidenceContainer.classList.add('hidden'); 
         
         loginSection.classList.remove('hidden');
         registerSection.classList.add('hidden');
     }
 }
-
 
 // FUNÇÕES DE AUTENTICAÇÃO
 
@@ -145,54 +144,54 @@ function logoutUser() {
 }
 
 /**
- * Rota protegida: Carrega os dados do perfil após o login.
- * Garante que o JWT esteja sendo enviado e lido corretamente.
- */
+ * Rota protegida: Carrega os dados do perfil após o login.
+ * Garante que o JWT esteja sendo enviado e lido corretamente.
+ */
 async function getProfile() {
-    const token = localStorage.getItem('jwtToken');
-    const profileStatus = 'profileStatus';
+    const token = localStorage.getItem('jwtToken');
+    const profileStatus = 'profileStatus';
 
-    if (!token) {
-        displayStatus(profileStatus, 'Você não está logado. Faça login para acessar.', 'error');
-        return;
-    }
+    if (!token) {
+        displayStatus(profileStatus, 'Você não está logado. Faça login para acessar.', 'error');
+        return;
+    }
 
-    log('Tentando carregar o perfil do usuário (rota protegida)...');
+    log('Tentando carregar o perfil do usuário (rota protegida)...');
 
-    try {
-        const response = await fetch(`${API_BASE_URL}/auth/profile`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}` 
-            }
-        });
+    try {
+        const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` 
+            }
+        });
 
-        const data = await response.json();
-        const userInfoDiv = document.getElementById('userInfo');
-        const userNameDisplay = document.getElementById('userNameDisplay');
+        const data = await response.json();
+        const userInfoDiv = document.getElementById('userInfo');
+        const userNameDisplay = document.getElementById('userNameDisplay');
 
-        if (!response.ok) {
-            displayStatus(profileStatus, `❌ Erro ao carregar perfil: ${data.message || 'Token inválido.'}`, 'error');
-            if (response.status === 401) logoutUser(); 
-            return;
-        }
+        if (!response.ok) {
+            displayStatus(profileStatus, `❌ Erro ao carregar perfil: ${data.message || 'Token inválido.'}`, 'error');
+            if (response.status === 401) logoutUser(); 
+            return;
+        }
 
-        const user = data.user;
-        userNameDisplay.textContent = user.name;
+        const user = data.user;
+        userNameDisplay.textContent = user.name;
 
-        userInfoDiv.innerHTML = `
-            <strong>ID:</strong> ${user._id}<br>
-            <strong>Nome:</strong> ${user.name}<br>
-            <strong>E-mail:</strong> ${user.email}
-        `;
-        
-        displayStatus(profileStatus, '✅ Perfil carregado com sucesso via JWT!', 'success');
+        userInfoDiv.innerHTML = `
+            <strong>ID:</strong> ${user._id}<br>
+            <strong>Nome:</strong> ${user.name}<br>
+            <strong>E-mail:</strong> ${user.email}
+        `;
+        
+        displayStatus(profileStatus, '✅ Perfil carregado com sucesso via JWT!', 'success');
 
-    } catch (error) {
-        displayStatus(profileStatus, 'Erro de conexão com a API. Verifique se o servidor Express está rodando.', 'error');
-        log(`Erro de rede/conexão: ${error.message}`, 'error');
-    }
+    } catch (error) {
+        displayStatus(profileStatus, 'Erro de conexão com a API. Verifique se o servidor Express está rodando.', 'error');
+        log(`Erro de rede/conexão: ${error.message}`, 'error');
+    }
 }
 
 
@@ -269,64 +268,9 @@ function handleTemplateSelection() {
 }
 
 
+// REMOVIDO: LÓGICA DO CANVAS (RUBRICA)
 
-// LÓGICA DO CANVAS (RUBRICA)
-
-function iniciarPadDeAssinatura() {
-    let isDrawing = false;
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#000';
-
-    const getPosition = (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const clientX = e.clientX || e.touches[0].clientX;
-        const clientY = e.clientY || e.touches[0].clientY;
-        return {
-            x: clientX - rect.left,
-            y: clientY - rect.top
-        };
-    };
-
-    const startDrawing = (e) => {
-        e.preventDefault();
-        isDrawing = true;
-        const pos = getPosition(e);
-        ctx.beginPath();
-        ctx.moveTo(pos.x, pos.y);
-    };
-
-    const draw = (e) => {
-        if (!isDrawing) return;
-        e.preventDefault();
-        const pos = getPosition(e);
-        ctx.lineTo(pos.x, pos.y);
-        ctx.stroke();
-    };
-
-    const stopDrawing = () => {
-        isDrawing = false;
-    };
-
-    // Eventos de Mouse e Toque
-    canvas.addEventListener('mousedown', startDrawing);
-    canvas.addEventListener('mousemove', draw);
-    canvas.addEventListener('mouseup', stopDrawing);
-    canvas.addEventListener('mouseout', stopDrawing);
-    canvas.addEventListener('touchstart', startDrawing);
-    canvas.addEventListener('touchmove', draw);
-    canvas.addEventListener('touchend', stopDrawing);
-}
-
-function limparCanvas() {
-    if (ctx && canvas) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        log('Rubrica limpa.', 'info');
-    }
-}
-
-
-// ETAPA 1: SOLICITAR OTP (POST /otp/generate)
+// ETAPA 1: SOLICITAR OTP (POST /auth/request-otp)
 
 async function solicitarOTP() {
     // 1. Captura os dados da tela
@@ -351,22 +295,24 @@ async function solicitarOTP() {
     log(`Solicitando OTP para o signatário ${signerId} via ${method} para ${recipient}...`);
 
     try {
-        const token = localStorage.getItem('jwtToken'); 
-        if (!token) {
+        const loggedInToken = localStorage.getItem('jwtToken'); 
+        if (!loggedInToken) {
             displayStatus('otpStatus', 'Erro: Usuário não autenticado. Faça login novamente.', 'error');
             return;
         }
 
-        const response = await fetch(`${API_BASE_URL}/otp/generate`, {
+        // 🚨 CORREÇÃO APLICADA: Rota /auth/request-otp
+        const response = await fetch(`${API_BASE_URL}/auth/request-otp`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
+                'Authorization': `Bearer ${loggedInToken}` // Usa o JWT de Login
             },
+            // CORREÇÃO APLICADA: Chave 'Email' para o destinatário
             body: JSON.stringify({ 
                 signerId: signerId,   
                 method: method,       
-                recipient: recipient  
+                Email: recipient     
             })
         });
 
@@ -377,6 +323,13 @@ async function solicitarOTP() {
             log(`Falha na solicitação: ${data.error || data.message}`, 'error');
             return;
         }
+        
+        // ✅ CORREÇÃO APLICADA: Salvar o JWT de Transação (curta duração)
+        if (data.token) {
+            localStorage.setItem('jwtToken', data.token);
+            log('JWT de Transação salvo para o Passo 2.', 'info');
+        }
+
 
         displayStatus('otpStatus', `✅ ${data.message}. Verifique seu dispositivo e siga para o Passo 2.`, 'success');
         
@@ -393,7 +346,6 @@ async function solicitarOTP() {
 
 // ETAPA 2: ASSINAR DOCUMENTO (POST /document/sign)
 
-
 async function assinarDocumento() {
     const otpCode = document.getElementById('otpCode').value;
     const templateId = document.getElementById('templateSelector').value; 
@@ -401,7 +353,9 @@ async function assinarDocumento() {
     const documentId = document.getElementById('docId').value;
     const resultDiv = document.getElementById('signatureResult');
     
-    const signatureImageBase64 = canvas.toDataURL('image/png');
+    // Base64/Rubrica é um placeholder vazio ou 'N/A' (para o Carimbo Digital)
+    const signatureImageBase64 = 'N/A';
+    
     const fileInput = document.getElementById('documentFile');
     const file = fileInput.files[0];
     
@@ -414,10 +368,6 @@ async function assinarDocumento() {
     }
     if (!otpCode) {
         displayStatus('signatureResult', 'O Código OTP é obrigatório.', 'error');
-        return;
-    }
-    if (signatureImageBase64.length < 500) { 
-        displayStatus('signatureResult', 'Por favor, desenhe sua rubrica no campo acima.', 'error');
         return;
     }
 
@@ -441,10 +391,12 @@ async function assinarDocumento() {
     formData.append('signerName', SIGNER_NAME);
     formData.append('contractTitle', contractTitle);
     formData.append('documentId', documentId);
-    formData.append('signatureImage', signatureImageBase64);
+    // Base64 VAZIO/NULO agora que estamos usando o Carimbo (hash)
+    formData.append('signatureImage', signatureImageBase64); 
 
     try {
         const token = localStorage.getItem('jwtToken'); 
+        
         if (!token) {
             displayStatus('signatureResult', 'Erro: Usuário não autenticado. Faça login novamente.', 'error');
             return;
@@ -465,6 +417,9 @@ async function assinarDocumento() {
             log(`Assinatura Falhou: ${data.message || data.error}`, 'error');
             return;
         }
+        
+        // 🔑 NOTA: O backend deve retornar 'signatureData.hash'
+        const hash = data.signatureRecord.signatureData.hash || 'Hash indisponível';
 
         // --- SUCESSO NA ASSINATURA ---
         resultDiv.className = 'success';
@@ -474,10 +429,10 @@ async function assinarDocumento() {
             <h3>✅ ASSINATURA CONCLUÍDA E SALVA!</h3>
             <p><strong>Status Legal:</strong> Assinatura Eletrônica Avançada</p>
             <p><strong>Fonte do Documento:</strong> ${source}</p>
-            <p><strong>Hash do Documento:</strong> ${data.signatureRecord.signatureData.hash.substring(0, 35)}...</p>
+            <p><strong>Hash do Documento:</strong> ${hash.substring(0, 35)}...</p>
             <p><strong>Evidência Salva:</strong> Sim, na base de dados</p>
         `;
-        log(`Assinatura salva. Hash: ${data.signatureRecord.signatureData.hash}`, 'success');
+        log(`Assinatura salva. Hash: ${hash}`, 'success');
 
     } catch (error) {
         displayStatus('signatureResult', 'Erro de rede. Verifique se o servidor Express está rodando e se há conexão.', 'error');
@@ -507,10 +462,19 @@ async function buscarEvidencia() {
     log(`Buscando evidência para: ${searchTerm}...`);
 
     try {
-        // Chama a Rota 3: /document/:searchTerm/evidence
+        // A rota /document/:searchTerm/evidence está protegida no backend.
+        const token = localStorage.getItem('jwtToken'); 
+        if (!token) {
+            displayStatus(statusDiv, 'Acesso negado. Faça login para auditar.', 'error');
+            return;
+        }
+
         const response = await fetch(`${API_BASE_URL}/document/${searchTerm}/evidence`, {
             method: 'GET',
-            headers: { 'Content-Type': 'application/json' } 
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` // Envia o JWT de Login/Sessão
+            } 
         });
 
         const data = await response.json();
@@ -538,7 +502,7 @@ async function buscarEvidencia() {
  * @param {HTMLElement} targetDiv - A div onde o resultado será inserido.
  */
 function renderEvidence(record, targetDiv) {
-    const signedAt = new Date(record.signedAt).toLocaleString();
+    const signedAt = new Date(record.signed_at || record.signedAt).toLocaleString('pt-BR'); 
     const hashShort = record.signatureData.hash.substring(0, 35) + '...';
     
     // --- Estrutura as Provas Legais ---
@@ -552,7 +516,7 @@ function renderEvidence(record, targetDiv) {
         <p><strong>ID Único:</strong> <span style="font-family: monospace; color:#3498db;">${record.documentId}</span></p>
         <p><strong>Fonte:</strong> ${record.fileMetadata.source}</p>
         
-        <h3>Prova Criptográfica</h3>
+        <h3>Prova Criptográfica (Selo/Carimbo Digital)</h3>
         <p><strong>Hash SHA-256 (Conteúdo):</strong> 
             <span style="font-family: monospace; font-size: 0.8em; color: #e74c3c; word-break: break-all;">
                 ${hashShort}
@@ -565,10 +529,14 @@ function renderEvidence(record, targetDiv) {
         <p><strong>Nome:</strong> ${record.signerName}</p>
         <p><strong>CPF (ID do Signatário):</strong> ${record.signerId}</p>
 
-        <h3>Visual da Rubrica</h3>
-        ${record.signatureData.visualRubric && record.signatureData.visualRubric !== 'N/A' 
-            ? `<img src="${record.signatureData.visualRubric}" alt="Rubrica do Signatário" style="max-width: 100%; border: 1px solid #ccc; margin-top: 10px;">`
-            : '<p>Nenhuma rubrica visual anexada.</p>'}
+        <h3>Carimbo Digital (Visual)</h3>
+        <p style="font-size: 14px; color:#2c3e50;">
+            A assinatura foi verificada pelo Carimbo Digital. 
+            A evidência visual do carimbo está no documento PDF final.
+        </p>
+        <p style="font-size: 12px; color: #6c757d;">
+            (A rubrica manuscrita não é mais exigida para este nível de segurança.)
+        </p>
     `;
 }
 
@@ -588,7 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const methodSelector = document.getElementById('method');
     const emailContainer = document.getElementById('emailInputContainer');
     const phoneContainer = document.getElementById('phoneInputContainer');
-    const templateSelector = document.getElementById('templateSelector'); // NOVO
+    const templateSelector = document.getElementById('templateSelector'); 
 
     function handleMethodChange() {
         if (methodSelector.value === 'Email') {
@@ -608,15 +576,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // LIGA o handler para a seleção de templates
     if (templateSelector) {
         templateSelector.addEventListener('change', handleTemplateSelection);
-        // NOVO: Chama a função no carregamento para garantir que a UI comece corretamente
+        // 🚨 CORREÇÃO: Chama a função no carregamento para garantir que a UI comece corretamente
         handleTemplateSelection(); 
     }
 
 
-    // 5. Inicialização do Canvas para a rubrica
-    canvas = document.getElementById('signatureCanvas');
-    if (canvas) {
-        ctx = canvas.getContext('2d');
-        iniciarPadDeAssinatura();
-    }
+    // 5. Lógica de inicialização de Canvas removida.
 });

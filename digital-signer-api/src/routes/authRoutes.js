@@ -5,13 +5,14 @@ const jwt = require('jsonwebtoken');
 const { pool } = require('../db');
 const authMiddleware = require('../middleware/authMiddleware'); 
 const otpService = require('../services/otpService');
-const MailgunService = require('../services/MailgunService'); 
 const { cpfValidationMiddleware } = require('../middleware/cpfValidationMiddleware'); 
-// 🚨 MUDANÇA: Funções auxiliares movidas/adicionadas aqui para resolver o ReferenceError no servidor.
-// 🎯 Adicionado: FUNÇÃO AUXILIAR: Gera um código OTP de 6 dígitos
+// As funções auxiliares foram movidas para um arquivo de utilidade (utilityService.js)
+// Mas, para manter a funcionalidade como está, as mantemos aqui:
+
+// 🎯 FUNÇÃO AUXILIAR: Gera um código OTP de 6 dígitos
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString(); 
 
-// 🎯 Adicionado: FUNÇÃO AUXILIAR: Calcula o tempo de expiração (5 minutos)
+// 🎯 FUNÇÃO AUXILIAR: Calcula o tempo de expiração (6 minutos)
 const getExpirationTime = () => {
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + 6); 
@@ -24,7 +25,6 @@ const getExpirationTime = () => {
 // ====================================================================
 
 router.post('/register', async (req, res) => {
-    // ✅ LEITURA DO FRONT-END EM PORTUGUÊS
     const { name, email, password } = req.body || {}; 
     
     if (!name || !email || !password) {
@@ -33,7 +33,6 @@ router.post('/register', async (req, res) => {
 
     let client;
     try {
-        // 🎯 CORREÇÃO 1: Nome da tabela de volta para 'users'
         const checkUserQuery = 'SELECT * FROM users WHERE email = $1'; 
         client = await pool.connect();
         const existingUserResult = await client.query(checkUserQuery, [email]);
@@ -46,9 +45,7 @@ router.post('/register', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // 🎯 CORREÇÃO 2: Colunas de INSERT ajustadas para 'name' e 'password'
         const insertUserQuery = 'INSERT INTO users (name, email, password, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW()) RETURNING id, name, email';
-        // VALORES PASSADOS: [nome, email, hashedPassword]
         const savedUserResult = await client.query(insertUserQuery, [name, email, hashedPassword]);
         const savedUser = savedUserResult.rows[0]; 
 
@@ -58,7 +55,6 @@ router.post('/register', async (req, res) => {
             message: 'Usuário registrado com sucesso!',
             user: {
                 id: savedUser.id,
-                // ✅ RETORNO ALINHADO AO BD: Retorna 'name' (do BD)
                 name: savedUser.name, 
                 email: savedUser.email,
             }
@@ -72,8 +68,11 @@ router.post('/register', async (req, res) => {
 });
 
 
+// ====================================================================
+// ROTA: POST /login 
+// ====================================================================
+
 router.post('/login', async (req, res) => {
-    // ✅ LEITURA DO FRONT-END EM PORTUGUÊS
     const { email, password, stayLoggedIn } = req.body || {}; 
 
     if (!email || !password) {
@@ -82,10 +81,9 @@ router.post('/login', async (req, res) => {
 
     let client;
     try {
-        // 🎯 CORREÇÃO 3: SELECT nas colunas 'name' e 'password'
         const checkUserQuery = 'SELECT id, name, password FROM users WHERE email = $1'; 
         client = await pool.connect();
-        const userResult = await client.query(checkUserQuery, [email]);
+        const userResult = await client.query(checkUserQuery, [Email]);
         const user = userResult.rows[0];
 
         if (!user) {
@@ -93,7 +91,6 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ message: 'Credenciais inválidas.' });
         }
 
-        // ✅ CORREÇÃO 4: Compara senha do body (senha) com senha do BD (user.password)
         const isMatch = await bcrypt.compare(password, user.password); 
 
         if (!isMatch) {
@@ -101,7 +98,6 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ message: 'Credenciais inválidas.' });
         }
 
-        // ✅ CORREÇÃO 5: Payload usa 'name' do BD
         const payload = { id: user.id, name: user.name }; 
         let expiresInTime = '1h';
         if (stayLoggedIn) {
@@ -130,20 +126,25 @@ router.post('/login', async (req, res) => {
 
 // ====================================================================
 // ROTA: POST /request-otp 
+// Segurança: ROTA PÚBLICA (SEM JWT) - A autenticação é feita pelo CPF/E-mail.
+// Esta é a rota que seu frontend deve chamar para enviar o código.
 // ====================================================================
 
 router.post('/request-otp', cpfValidationMiddleware, async (req, res) => {
-    const { signerId, method, email } = req.body || {};
+    // 🚨 A rota estava configurada para retornar apenas a mensagem, mas o fluxo exige o JWT aqui.
+    // O JWT DEVE ser gerado AQUI e retornado para o Frontend.
+    
+    const { signerId, method, Email } = req.body || {};
 
-    if (!signerId || !method || !email) {
+    if (!signerId || !method || !Email) {
         return res.status(400).json({ message: 'CPF, método e destinatário são obrigatórios para o OTP.' });
     }
 
     let client;
     try {
-        // 1. GERAÇÃO E PERSISTÊNCIA
-        const otpCode = generateOTP(); // ✅ FUNÇÃO AGORA DEFINIDA NO TOPO
-        const expiresAt = getExpirationTime(); // ✅ FUNÇÃO AGORA DEFINIDA NO TOPO
+        // 1. GERAÇÃO E PERSISTÊNCIA DO OTP
+        const otpCode = generateOTP(); 
+        const expiresAt = getExpirationTime(); 
 
         client = await pool.connect();
         
@@ -151,35 +152,40 @@ router.post('/request-otp', cpfValidationMiddleware, async (req, res) => {
             INSERT INTO otps (signer_id, code, expires_at) 
             VALUES ($1, $2, $3)
             ON CONFLICT (signer_id) DO UPDATE 
-            SET code = $2, expires_at = $3`; // ✅ SQL CORRIGIDO (Removida a vírgula e created_at)
+            SET code = $2, expires_at = $3, used_at = NULL`; 
         
         await client.query(insertOtpQuery, [signerId, otpCode, expiresAt]);
         
-        // 2. ENVIO (Chamada Única ao Orquestrador)
-        const messageResponse = await otpService.sendToken(method, email, otpCode);
+        // 2. ENVIO DO TOKEN (E-MAIL)
+        const messageResponse = await otpService.sendToken(method, Email, otpCode);
         
-        // 3. RESPOSTA DE SUCESSO 
+        // 3. GERAÇÃO DO JWT (CONFORME SUA ARQUITETURA)
+        const payload = { id: signerId, name: email, flow: 'signature' }; 
+        const token = jwt.sign(
+            payload,
+            process.env.JWT_SECRET,
+            { expiresIn: '15m' } // Token de curta duração para finalizar a assinatura
+        );
+        
+        client.release();
+        
+        // 4. RESPOSTA DE SUCESSO (RETORNA O JWT)
         return res.status(200).json({
             message: messageResponse,
+            token: token, // <<-- O JWT AGORA É ENVIADO AO FRONTEND AQUI
+            signerCpfFormatted: signerId // Melhor usar o CPF limpo (do backend)
         });
 
     } catch (error) {
-        // 🚨 CAPTURA O ERRO LANÇADO PELO Serviço de Envio (Mailgun ou Sinch)
+        if (client) client.release();
         console.error('[ERRO FATAL NA TRANSAÇÃO OTP]:', error);
-        
-        // Retorna a mensagem de erro detalhada do Serviço (error.message)
         return res.status(500).json({ message: error.message || 'Falha interna ao processar a solicitação de OTP. Verifique o log do backend.' });
-        
-    } finally {
-        // ✅ Libera a conexão UMA ÚNICA VEZ
-        if (client) {
-            client.release();
-        }
-    }
+    } 
 });
 
 // ====================================================================
 // ROTA: GET /profile
+// Segurança: ROTA PROTEGIDA (COM JWT) - Exige o authMiddleware.
 // ====================================================================
 
 router.get('/profile', authMiddleware, (req, res) => {
@@ -189,6 +195,4 @@ router.get('/profile', authMiddleware, (req, res) => {
     });
 });
 
-// 🎯 SOLUÇÃO DO TypeError: argument handler must be a function
-// A linha de exportação final deve sempre estar presente!
 module.exports = router;

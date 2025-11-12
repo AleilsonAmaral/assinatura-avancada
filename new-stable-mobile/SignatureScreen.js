@@ -15,6 +15,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1';
 const SIGNER_NAME = 'Usuário de Teste';
+const JWT_LOGIN_KEY = 'jwtToken'; // Chave onde o token de login está salvo
+
 
 // Componente para exibir mensagens de status
 const Message = ({ message, type }) => {
@@ -27,7 +29,7 @@ const Message = ({ message, type }) => {
     );
 };
 
-// ⭐️ FUNÇÃO AUXILIAR: Adiciona +55 se for SMS/WhatsApp e o prefixo estiver faltando
+// ⭐️ FUNÇÃO AUXILIAR: Remove formatação e adiciona prefixo BR se necessário
 const formatPhoneNumber = (number, method) => {
     if (method !== 'SMS' && method !== 'WhatsApp') {
         return number;
@@ -52,7 +54,7 @@ export default function SignatureScreen({ navigation }) {
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState({ message: '', type: '' });
 
-    // Lógica para alternar inputs de E-mail/Celular
+    // Lógica para alternar inputs de E-mail/Celular (Mantida)
     useEffect(() => {
         if (method === 'Email') {
             AsyncStorage.getItem('userEmail').then(email => {
@@ -64,10 +66,17 @@ export default function SignatureScreen({ navigation }) {
     }, [method]);
 
 
-    // FUNÇÃO PARA SOLICITAR OTP
+    // FUNÇÃO PARA SOLICITAR OTP (CORRIGIDA PARA AUTORIZAÇÃO)
     const solicitarOTP = async () => {
-        if (!signerId || !recipient) {
-            setStatus({ message: "CPF e Destinatário são obrigatórios.", type: 'error' });
+        // 🚨 VALIDAÇÃO MAIS RÍGIDA NO FRONT-END
+        const cleanedSignerId = signerId.replace(/\D/g, ''); // Remove pontos/traços
+        
+        if (cleanedSignerId.length !== 11) {
+            setStatus({ message: "CPF deve ter 11 dígitos.", type: 'error' });
+            return;
+        }
+        if (!recipient) {
+            setStatus({ message: "O Destinatário (e-mail) é obrigatório.", type: 'error' });
             return;
         }
 
@@ -77,15 +86,29 @@ export default function SignatureScreen({ navigation }) {
         setStatus({ message: 'Solicitando OTP...', type: 'info' });
 
         try {
+            // 🔑 1. LER O JWT DE LOGIN (AUTORIZAÇÃO)
+            const loggedInToken = await AsyncStorage.getItem(JWT_LOGIN_KEY);
+
+            if (!loggedInToken) {
+                // 🛑 CORRIGE O ERRO DE AUTORIZAÇÃO (401/Acesso Negado)
+                setStatus({ message: "Sessão expirada. Faça login para iniciar a transação.", type: 'error' });
+                navigation.navigate('Login'); 
+                return;
+            }
+
             const payload = {
-                signerId: signerId,
+                signerId: cleanedSignerId, // ✅ ENVIANDO CPF LIMPO
                 method: method,
-                email: formattedRecipient,
+                email: formattedRecipient, // Enviando o destinatário formatado
             };
 
             const response = await fetch(`${API_BASE_URL}/auth/request-otp`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    // ✅ INJETANDO O JWT DE LOGIN NO CABEÇALHO PARA AUTORIZAR A CRIAÇÃO DA TRANSAÇÃO
+                    'Authorization': `Bearer ${loggedInToken}`,
+                },
                 body: JSON.stringify(payload),
             });
 
@@ -93,29 +116,28 @@ export default function SignatureScreen({ navigation }) {
             try {
                 data = await response.json();
             } catch (jsonError) {
-                data = { message: `Erro HTTP ${response.status}. Servidor inacessível ou retornou corpo vazio.` };
+                data = { message: `Erro HTTP ${response.status}. Servidor inacessível.` };
             }
 
             if (response.ok) {
-
-                // ✅ NAVEGAÇÃO CORRIGIDA: Vai para a Rubrica, passando os dados para a próxima tela
-                navigation.navigate('Rubrica', {
-                    signerId: signerId,
-                    otpData: {
-                        method: method,
-                        recipient: formattedRecipient
-                    }
+                
+                // ✅ NAVEGAÇÃO FINAL CORRIGIDA: Passando os DADOS OBRIGATÓRIOS para a próxima tela
+                navigation.navigate('Verification', { 
+                    signerId: cleanedSignerId, // ENVIAR O VALOR LIMPO
+                    otpRecipient: formattedRecipient,
+                    otpMethod: method,
                 });
 
-                setStatus({ message: `✅ ${data.message}. Navegando para captura de assinatura.`, type: 'success' });
+                setStatus({ message: `✅ ${data.message}. Navegando para verificação.`, type: 'success' });
 
             } else {
+                // 🛑 A API rejeitou (401 Acesso Negado, 400 CPF Inválido)
                 setStatus({ message: `❌ Erro: ${data.message || 'Falha ao solicitar OTP.'}`, type: 'error' });
             }
 
         } catch (error) {
             console.error("Erro fatal na solicitação de OTP:", error);
-            setStatus({ message: "Erro de Rede: Não foi possível conectar ao servidor. Tente novamente.", type: 'error' });
+            setStatus({ message: "Erro de Rede. Tente novamente.", type: 'error' });
         } finally {
             setIsLoading(false);
         }
@@ -135,8 +157,10 @@ export default function SignatureScreen({ navigation }) {
                         style={styles.input}
                         placeholder="000.000.000-00"
                         value={signerId}
-                        onChangeText={setSignerId}
+                        // 🚨 MUDANÇA: Permitimos apenas números para simplificar a validação do backend
+                        onChangeText={text => setSignerId(text.replace(/\D/g, ''))} 
                         keyboardType="numeric"
+                        maxLength={11} 
                     />
 
                     {/* Seletor de Método */}

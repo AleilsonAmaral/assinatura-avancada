@@ -1,4 +1,4 @@
-// Arquivo: RubricaScreen.js (FINAL COMPLETO E CORRIGIDO COM ASYNCSTORAGE)
+// Arquivo: RubricaScreen.js (FINAL COMPLETO E CORRIGIDO COM AUTORIZAÇÃO)
 
 import React, { useState } from 'react';
 import { 
@@ -6,54 +6,50 @@ import {
     TextInput, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 
-// Importações (Mantendo AsyncStorage, conforme solicitado)
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 import SignatureCanvasContainer from './SignatureCanvasContainer.js'; 
 
-// --- Variáveis Globais (MOCK para Usuário/Documento) ---
+// --- Variáveis Globais ---
 const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1';
 const SIGNER_NAME = 'Usuário de Teste'; 
 const LOGGED_IN_USER_ID = 'USER_DEFAULT_ID_FROM_LOGIN'; 
+const JWT_LOGIN_KEY = 'jwtToken'; // Chave salva no LoginScreen
 
 // =========================================================
 // 🚨 SEÇÃO 1: FUNÇÕES DE SERVIÇO (API)
 // =========================================================
 
-function generateMockHash(data) {
+function generateMockHash(data) { /* ... lógica mantida ... */
     const combinedData = data + new Date().getTime();
     return `sha256-${Math.random().toString(36).substring(2, 12)}${btoa(combinedData).substring(0, 10)}`; 
 }
 
-async function getApiErrorMessage(response, defaultMessage) {
+async function getApiErrorMessage(response, defaultMessage) { /* ... lógica mantida ... */
     let finalMessage = defaultMessage || `Falha HTTP: ${response.status}.`;
     
     try {
-        const contentType = response.headers.get('content-type');
-        const isJson = contentType && contentType.includes('application/json');
-        
-        if (isJson) {
-            const errorData = await response.json();
-            finalMessage = errorData.message || finalMessage;
-        } else {
-            const rawText = await response.text();
-            finalMessage = `Falha HTTP ${response.status}. Resposta da API: ${rawText.substring(0, 100)}`;
-        }
+        const isJson = response.headers.get('content-type')?.includes('application/json');
+        const errorData = isJson ? await response.json() : await response.text();
+        finalMessage = isJson ? (errorData.message || finalMessage) : finalMessage;
     } catch (e) {
-         console.error("Erro ao tentar ler resposta da API:", e);
-         finalMessage = `Falha HTTP ${response.status}. Resposta da API vazia ou ilegível.`;
+         finalMessage = `Falha HTTP ${response.status}. Resposta da API ilegível.`;
     }
     return finalMessage;
 }
 
 
 /**
- * 1. SOLICITAÇÃO DE OTP e GERAÇÃO de JWT (Passo de Envio do Código)
- * Rota pública que gera o JWT de Transação.
+ * 1. SOLICITAÇÃO DE OTP e GERAÇÃO de JWT (CORRIGIDA PARA AUTORIZAÇÃO)
+ * @param {string} loggedInToken - O JWT do Login (Necessário para o authMiddleware)
  */
-async function requestOTP(intentionPayload, signerId) { 
-    const response = await fetch(`${API_BASE_URL}/otp/generate`, {
+async function requestOTP(intentionPayload, signerId, loggedInToken) { 
+    // 🔑 O token de LOGIN é enviado para autorizar a requisição de criação de transação
+    const response = await fetch(`${API_BASE_URL}/auth/request-otp`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${loggedInToken}` // 🔑 AUTORIZAÇÃO DE LOGIN
+        },
         body: JSON.stringify({ intentionPayload, signerId }),
     });
 
@@ -62,20 +58,28 @@ async function requestOTP(intentionPayload, signerId) {
         throw new Error(message);
     }
     
-    return response.json(); 
+    const responseData = await response.json();
+    
+    // 🔑 SALVA O JWT de transação (retornado pela API)
+    if (responseData.token) {
+        await AsyncStorage.setItem(JWT_LOGIN_KEY, responseData.token); // Reutilizando a chave para o JWT de Transação
+    } else {
+        console.warn('Backend não retornou o JWT após geração de OTP.');
+    }
+    
+    return responseData; 
 }
 
 /**
- * 2. VALIDAÇÃO DE OTP E FINALIZAÇÃO DA ASSINATURA (Passo de Confirmação)
- * 🔑 Requer o JWT de transação para autorizar a requisição.
+ * 2. VALIDAÇÃO DE OTP E FINALIZAÇÃO DA ASSINATURA 
  */
 async function finalizeSignature(otpCode, signatureHash, jwtToken) {
-    // 🛑 CRÍTICO: O JWT é enviado no header para autorizar a transação
+    // ... (Lógica mantida, usando jwtToken para a rota protegida)
     const response = await fetch(`${API_BASE_URL}/signature/validate`, {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${jwtToken}` // 🔑 AUTORIZAÇÃO DE SEGURANÇA
+            'Authorization': `Bearer ${jwtToken}` // 🔑 JWT DE TRANSAÇÃO
         },
         body: JSON.stringify({ otpCode, signatureHash }),
     });
@@ -92,46 +96,56 @@ async function finalizeSignature(otpCode, signatureHash, jwtToken) {
 // 🎯 SEÇÃO 2: TELA PRINCIPAL (RubricaScreen)
 // =========================================================
 
-// --- Constantes de Estado do Novo Fluxo ---
 const STEPS = {
-    PREPARE: 'PREPARE',         // Passo 1: Termos e Intenção
-    REQUEST_OTP: 'REQUEST_OTP', // Passo 2: Enviar OTP e Inserir Código
-    CONFIRMED: 'CONFIRMED',     // Passo 3: Carimbo Digital
+    PREPARE: 'PREPARE', 
+    OTP: 'OTP',         // Passo 2: Campo de Código e Finalização
+    CONFIRMED: 'CONFIRMED', 
 };
 
+// ... (Componente Message mantido)
+
 const RubricaScreen = ({ signerId = LOGGED_IN_USER_ID, documentId = 'DOC_ABC_123' }) => {
+    // ... (Estados mantidos)
     const [step, setStep] = useState(STEPS.PREPARE);
     const [isLoading, setIsLoading] = useState(false);
     const [otpCode, setOtpCode] = useState('');
     const [signatureMetaData, setSignatureMetaData] = useState(null); 
-    const [otpSent, setOtpSent] = useState(false); // 🚩 Novo: Controla se o código foi enviado
+    const [otpSent, setOtpSent] = useState(false); 
 
-    // 1. Função que SOLICITA o OTP e Salva o JWT (Primeiro botão do Passo 2)
-    const handleRequestOTP = async () => {
+    // ... (Função handleStartSignature Corrigida Abaixo)
+    const handleStartSignature = async () => {
+        if (!documentId) {
+             Alert.alert("Erro", "ID do Documento ausente.");
+             return;
+        }
+
         setIsLoading(true);
         try {
-            const intentionPayload = `Intent_Sign_${documentId}_by_${signerId}`; 
+            // 🔑 PASSO CRÍTICO: LER O JWT DE LOGIN/SESSÃO DO STORAGE
+            const loggedInToken = await AsyncStorage.getItem(JWT_LOGIN_KEY);
             
-            // ✅ CHAMADA REAL: Solicita o OTP e recebe o JWT
-            const responseData = await requestOTP(intentionPayload, signerId);
-
-            // 🔑 ALTERAÇÃO: Salva o JWT de Transação no AsyncStorage
-            if (responseData.token) {
-                await AsyncStorage.setItem('jwtToken', responseData.token);
-            } else {
-                 throw new Error("API não retornou o token de transação (JWT).");
+            if (!loggedInToken) {
+                // Navegar de volta se a sessão expirou
+                Alert.alert("Sessão Expirada", "Faça login novamente para iniciar a assinatura.");
+                throw new Error("Token de Login ausente. Acesso Negado.");
             }
-
-            // Mock de metadados
+            
+            const userEmail = await AsyncStorage.getItem('userEmail') || signerId; 
+            
+            // 🛠️ CHAMADA AGORA AUTORIZADA com o JWT de Login
+            const intentionPayload = `Intent_Sign_${documentId}_by_${signerId}`;
+            const responseData = await requestOTP(intentionPayload, signerId, loggedInToken); 
+            
+            // ... (Mock e Metadados mantidos)
+            const mockHash = generateMockHash(documentId + signerId); 
             setSignatureMetaData({ 
-                signerName: responseData.name || SIGNER_NAME, 
-                signatureDate: new Date().toISOString(), 
-                validationUrl: responseData.validationUrl || 'https://default.url', 
-                documentHash: responseData.hash || generateMockHash(documentId) 
+                signerName: SIGNER_NAME, signatureDate: new Date().toISOString(), 
+                validationUrl: 'https://seuapp.com/validar', documentHash: mockHash 
             });
             
-            Alert.alert("Sucesso", "Token de OTP enviado. Por favor, insira o código abaixo.");
+            Alert.alert("Sucesso", responseData.message || "Token de OTP enviado. Por favor, insira o código abaixo.");
             setOtpSent(true); 
+            setStep(STEPS.OTP); 
             
         } catch (error) {
             console.error("Erro ao solicitar OTP:", error);
@@ -140,29 +154,33 @@ const RubricaScreen = ({ signerId = LOGGED_IN_USER_ID, documentId = 'DOC_ABC_123
             setIsLoading(false);
         }
     };
-    
-    // 2. Função para CONFIRMAR OTP E FINALIZAR ASSINATURA (Segundo botão do Passo 2)
+
+
+    // 2. CONFIRMAÇÃO DO OTP E UPLOAD FINAL DO DOCUMENTO (Usa JWT e OTP)
     const handleFinalizeSignature = async () => {
-        // Validações
+        
+        if (step !== STEPS.OTP) return;
+
+        // Validações mantidas
         if (otpCode.length < 6 || !signatureMetaData || !signatureMetaData.documentHash) {
-             Alert.alert("Erro", "Campos ausentes ou metadados inválidos.");
+             Alert.alert("Erro", "Campos ausentes ou inválidos.");
              return;
         }
 
         setIsLoading(true);
         try {
-            // 🔑 1. OBTÉM O JWT de Transação (Salvo no Passo de Envio)
-            const token = await AsyncStorage.getItem('jwtToken');
+            // 🔑 1. OBTÉM O JWT de Transação (Salvo no Passo 1)
+            const token = await AsyncStorage.getItem(JWT_LOGIN_KEY); 
+            
             if (!token) {
-                // 🛑 Falha de Autorização: Se o token for nulo, a API rejeitará
-                throw new Error("Sessão expirada. Token de transação ausente. Reinicie.");
+                 throw new Error("Sessão expirada. Token de transação ausente. Reinicie o Passo 1.");
             }
             
             // ✅ CHAMADA FINAL: Validação e Finalização usando o JWT e o OTP
             await finalizeSignature(otpCode, signatureMetaData.documentHash, token); 
             
-            // 🧹 LIMPEZA: Remove o JWT da transação (Segurança/Limpeza)
-            await AsyncStorage.removeItem('jwtToken'); 
+            // 🧹 LIMPEZA: Remove o JWT da transação
+            await AsyncStorage.removeItem(JWT_LOGIN_KEY); 
             
             Alert.alert("Sucesso", "Assinatura confirmada e concluída!");
             setStep(STEPS.CONFIRMED);
@@ -178,6 +196,7 @@ const RubricaScreen = ({ signerId = LOGGED_IN_USER_ID, documentId = 'DOC_ABC_123
     // --- Renderização de Conteúdo Baseada no Estado (Step) ---
     const renderContent = () => {
         if (isLoading) {
+            // ... (Lógica de Loading)
             return (
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color="#007BFF" />
@@ -243,13 +262,17 @@ const RubricaScreen = ({ signerId = LOGGED_IN_USER_ID, documentId = 'DOC_ABC_123
                         <View style={{ marginTop: 20 }}>
                              <Button 
                                  title="Voltar ao Início" 
-                                 onPress={() => setStep(STEPS.PREPARE)} 
+                                 onPress={() => {
+                                     setOtpSent(false); // Reinicia o estado para PREPARE
+                                     setStep(STEPS.PREPARE); 
+                                 }} 
                                  color="#bdc3c7"
                              />
                         </View>
                     </View>
                 );
             case STEPS.CONFIRMED:
+                // ... (Lógica de Renderização CONFIRMED mantida)
                 return (
                     <View style={styles.stepContainer}>
                         <Text style={styles.successHeader}>✅ Assinatura Digital Concluída!</Text>

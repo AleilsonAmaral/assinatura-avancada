@@ -14,7 +14,7 @@ import * as Linking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
 const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1';
-
+const JWT_LOGIN_KEY = 'jwtToken'; // Chave para o token de login
 
 // Componente para exibir mensagens de status
 const Message = ({ message, type }) => {
@@ -31,15 +31,14 @@ const Message = ({ message, type }) => {
 
 export default function EvidenceScreen({ route, navigation }) {
     
-    const initialDocId = route.params?.documentId || '';
+    // Assumimos que o documentId vem após a finalização da assinatura (VerificationScreen)
+    const initialDocId = route.params?.documentId || ''; 
 
     const [searchTerm, setSearchTerm] = useState(initialDocId);
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState({ message: '', type: '' });
-    // const [evidenceRecord, setEvidenceRecord] = useState(null); // Estado de record não é mais necessário aqui
 
-    
-    // ⭐️ Correção: Se o documentId veio da rota (após a assinatura), busca-o imediatamente
+    // ⭐️ Busca imediata se o ID veio da rota de assinatura
     useEffect(() => {
         if (initialDocId) {
             buscarEvidencia(initialDocId);
@@ -60,15 +59,15 @@ export default function EvidenceScreen({ route, navigation }) {
 
         try {
             // 🚨 ADICIONANDO O TOKEN (Resolve o 401 Unauthorized)
-            const token = await AsyncStorage.getItem('jwtToken');
+            const token = await AsyncStorage.getItem(JWT_LOGIN_KEY); // Usa o token de Login/Sessão
 
             if (!token) {
-                // Navega de volta para login se o token for nulo
-                setStatus({ message: "Sessão expirada. Redirecionando para Login.", type: 'error' });
-                await AsyncStorage.removeItem('jwtToken'); 
+                // 🛑 Se o token de sessão não existir, a rota protegida falhará.
+                setStatus({ message: "Sessão expirada. Faça login para auditar.", type: 'error' });
+                await AsyncStorage.removeItem(JWT_LOGIN_KEY); 
                 navigation.navigate('Login');
                 setIsLoading(false);
-                return;
+                return; // Interrompe a execução
             }
 
             // Rota GET /document/:searchTerm/evidence
@@ -76,7 +75,7 @@ export default function EvidenceScreen({ route, navigation }) {
                 method: 'GET',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}` // ✅ Token JWT para autenticação
+                    'Authorization': `Bearer ${token}` // ✅ Token JWT para autorização da busca
                 }, 
             });
             
@@ -84,6 +83,7 @@ export default function EvidenceScreen({ route, navigation }) {
             try {
                 data = await response.json();
             } catch (jsonError) {
+                // Se a API retornar HTML (erro 500 ou 404), tratamos como falha de servidor
                 data = { message: `Erro HTTP ${response.status}. Servidor inacessível ou falha interna.` };
             }
 
@@ -92,12 +92,11 @@ export default function EvidenceScreen({ route, navigation }) {
                     
                     // 🚨 MUDANÇA CRÍTICA: NAVEGAR para a tela de detalhes
                     navigation.navigate('EvidenceDetails', { 
-                        evidenceRecord: data.evidenceRecord // Passa o objeto completo para a próxima tela
+                        evidenceRecord: data.evidenceRecord // Passa o objeto completo
                     });
 
-                    // Limpa o estado e retorna para interromper a execução aqui
                     setIsLoading(false);
-                    return; 
+                    return; // Interrompe aqui após a navegação
                 } else {
                     setStatus({ message: "Registro de evidência legal não encontrado.", type: 'error' });
                 }
@@ -144,13 +143,7 @@ export default function EvidenceScreen({ route, navigation }) {
                         />
                     )}
 
-                    {/* ❌ PLACEHOLDER: A exibição final está em EvidenceDetailsScreen */}
-                    <View style={{ marginTop: 30 }}>
-                        <Text style={styles.subtitle}>
-                            Insira o ID para iniciar a busca.
-                        </Text>
-                    </View>
-                    
+                    {/* Botão de Volta */}
                     <View style={{ marginTop: 30 }}>
                         <Button title="Voltar para Assinatura" onPress={() => navigation.navigate('Signature')} color="#bdc3c7" />
                     </View>
@@ -213,43 +206,4 @@ const styles = StyleSheet.create({
         width: '100%',
         backgroundColor: '#fff',
     },
-    evidenceCard: { // Estilos mantidos, mas movidos para EvidenceDetailsScreen
-        marginTop: 30,
-        padding: 20,
-        backgroundColor: '#ecf0f1',
-        borderRadius: 8,
-        borderLeftWidth: 5,
-        borderLeftColor: '#2ecc71',
-        width: '100%',
-    },
-    evidenceHeader: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginBottom: 15,
-        color: '#2ecc71',
-    },
-    dataLabel: {
-        fontSize: 14,
-        fontWeight: '600',
-        marginTop: 10,
-        color: '#34495e',
-    },
-    dataValue: {
-        fontSize: 14,
-        marginBottom: 5,
-        color: '#555',
-        marginLeft: 10,
-    },
-    hashText: {
-        fontSize: 12,
-        color: '#e74c3c',
-        fontFamily: 'monospace',
-        wordBreak: 'break-all',
-    },
-    helperText: {
-        fontSize: 10,
-        marginTop: 10,
-        color: '#7f8c8d',
-        fontStyle: 'italic',
-    }
 });

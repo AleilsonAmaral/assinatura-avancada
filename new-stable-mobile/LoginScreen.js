@@ -14,23 +14,26 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome } from '@expo/vector-icons';
 
 const API_BASE_URL = 'https://api.aleilsondev.sbs/api/v1';
+const JWT_LOGIN_KEY = 'jwtToken'; // Chave padronizada para o JWT de Login/Sessão
 
 
 export default function LoginScreen({ navigation }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [isLoggedIn, setIsLoggedIn] = useState(false); // Mantido, mas não usado ativamente no fluxo
     const [statusMessage, setStatusMessage] = useState('');
     const [showPassword, setShowPassword] = useState(false);
 
-    // Verifica o estado de login ao iniciar o app
+    // Verifica o estado de login ao iniciar o app (Mantido)
     useEffect(() => {
         const checkLoginStatus = async () => {
             try {
-                const token = await AsyncStorage.getItem('jwtToken');
+                const token = await AsyncStorage.getItem(JWT_LOGIN_KEY);
                 if (token) {
                     setIsLoggedIn(true);
+                    // 💡 MELHORIA DE UX: Se já estiver logado, navega para a tela principal
+                    // navigation.navigate('Signature'); 
                 }
             } catch (e) {
                 console.error("Erro ao verificar login inicial:", e);
@@ -59,11 +62,13 @@ export default function LoginScreen({ navigation }) {
             const data = await response.json();
 
             if (response.ok && data.token) {
-                await AsyncStorage.setItem('jwtToken', data.token);
+                // ✅ CHAVE DE SEGURANÇA: Salva o JWT de Login para ser usado na autorização do OTP
+                await AsyncStorage.setItem(JWT_LOGIN_KEY, data.token); 
                 await AsyncStorage.setItem('userEmail', email);
 
                 Alert.alert("Sucesso!", "Login realizado. Navegando...");
-                navigation.navigate('Signature');
+                // Navega para a tela inicial do fluxo de assinatura
+                navigation.navigate('Signature'); 
 
             } else {
                 setStatusMessage(data.message || "Credenciais inválidas. Verifique a senha.");

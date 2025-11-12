@@ -73,7 +73,7 @@
 
     <div id="signatureContainer" class="container hidden">
         <h1>API de Assinatura Digital Avançada (Fluxo OTP)</h1>
-        <p>Simulação do fluxo de Assinatura Eletrônica Avançada (Upload, Rubrica, OTP).</p>
+        <p>Simulação do fluxo de Assinatura Eletrônica Avançada (Carimbo Digital, OTP).</p>
 
         <div id="step1" class="step-container">
             <h2>Passo 1: Autenticação OTP</h2>
@@ -107,12 +107,10 @@
         </div>
 
         <div id="step2" class="step-container hidden">
-            <h2>Passo 2: Arquivo, Rubrica e Assinatura</h2>
+            <h2>Passo 2: Arquivo e Assinatura</h2>
 
             <label for="otpCode">Código OTP Recebido:</label>
             <input type="text" id="otpCode" placeholder="Insira o código de 6 dígitos" required>
-
-            <h2>Passo 2: Arquivo, Rubrica e Assinatura</h2>
 
             <label for="templateSelector">Ou Selecione um Contrato Padrão:</label>
             <select id="templateSelector" onchange="handleTemplateSelection()">
@@ -121,16 +119,12 @@
                 <option value="template-nda">Acordo de Não Divulgação (NDA)</option>
                 <option value="upload">Fazer Upload de Novo Arquivo</option>
             </select>
-            <div id="fileUploadContainer"> <label for="documentFile">Selecione o Documento (PDF/DOCX/etc):</label>
+            
+            <div id="fileUploadContainer" class="hidden"> 
+                <label for="documentFile">Selecione o Documento (PDF/DOCX/etc):</label>
                 <input type="file" id="documentFile">
             </div>
-
-            <label for="signatureCanvas">Sua Rubrica (Assinatura Manuscrita):</label>
-            <div class="signature-pad-container">
-                <canvas id="signatureCanvas" width="400" height="150"></canvas>
-            </div>
-            <button type="button" onclick="limparCanvas()" class="secondary-button">Limpar Rubrica</button>
-
+            
             <label for="docTitle">Título do Contrato:</label>
             <input type="text" id="docTitle" value="Contrato de Aluguel 2025" required>
 
