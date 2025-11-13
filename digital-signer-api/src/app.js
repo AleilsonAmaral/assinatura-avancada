@@ -1,4 +1,4 @@
-// digital-signer-api/src/app.js (Versão Corrigida para incluir o download do Excel)
+// digital-signer-api/src/app.js (Versão FINAL CORRIGIDA)
 
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '..', '..', '.env') });
@@ -45,15 +45,32 @@ app.get('/', (req, res) => {
 
 // 2. ROTA DE DOWNLOAD DE DOCUMENTOS (PDF)
 app.get('/api/v1/document/:documentId/download', (req, res) => {
-    // ... (Lógica de download de PDF mantida)
+    const { documentId } = req.params;
+    const templateFileName = 'Contrato_Teste.pdf';
+
+    const templatePath = path.join(__dirname, 'templates', templateFileName);
+    console.log(`DEBUG: Tentando servir arquivo de: ${templatePath}`);
+
+    try {
+        if (!fs.existsSync(templatePath)) {
+            console.error(`[DOWNLOAD FAIL] PDF not found at: ${templatePath}`);
+            return res.status(404).send({ error: "Documento não encontrado no servidor. Falha de caminho." });
+        }
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${documentId}.pdf"`);
+
+        fs.createReadStream(templatePath).pipe(res);
+
+    } catch (e) {
+        console.error("Erro ao servir documento:", e);
+        res.status(500).send({ error: "Falha interna no servidor ao tentar servir o PDF." });
+    }
 });
 
 
 // ====================================================================
-// 🚨 CORREÇÃO DE ROTA: DOWNLOAD DA PLANILHA DE AUDITORIA (Direto no app.js para teste)
-// Adicionamos a rota aqui para garantir que ela seja carregada corretamente.
-// O ideal é que esta rota esteja dentro do signRoutes.js, mas a colocamos aqui
-// para evitar problemas de aninhamento enquanto testamos.
+// ROTA: DOWNLOAD DA PLANILHA DE AUDITORIA (Paliativo de MVP)
 // ====================================================================
 
 app.get('/api/v1/export/download', authMiddleware, async (req, res) => {
@@ -83,21 +100,29 @@ app.get('/api/v1/export/download', authMiddleware, async (req, res) => {
 
 
 // 3. MONTAGEM DOS ROTAS
-app.use('/api/v1', authMiddleware, signRoutes); // O signRoutes.js agora NÃO deve ter mais a rota de download do Excel.
+app.use('/api/v1', authMiddleware, signRoutes);
 app.use('/api/v1/auth', authRoutes);
 
 
 module.exports = app;
 
 
+// 🚨 CORREÇÃO CRÍTICA: INÍCIO DO SERVIDOR GARANTIDO
 pool.connect()
     .then(client => {
         console.log('✅ PostgreSQL conectado com sucesso!');
         client.release();
-        // ... (Restante da lógica de inicialização)
+
+        // Removemos o bloco 'if (!module.parent)' para garantir que o servidor inicie
+        app.listen(PORT, () => {
+            console.log('======================================================');
+            console.log(`🚀 API de Assinatura rodando em http://localhost:${PORT}`);
+            console.log('======================================================');
+        });
     })
     .catch(err => {
-        // ... (Lógica de erro de conexão)
+        console.error('❌ Erro fatal ao conectar com o PostgreSQL:', err.message);
+        process.exit(1);
     });
 
 // Fim do arquivo app.js
